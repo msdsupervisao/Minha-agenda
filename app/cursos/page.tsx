@@ -1,5 +1,5 @@
 import CourseCard from '@/components/CourseCard';
-import { DashboardSidebar } from '@/components/DashboardSidebar';
+import DashboardSidebar from '@/components/DashboardSidebar';
 
 export const metadata = {
   title: 'Cursos - Minha Agenda',
