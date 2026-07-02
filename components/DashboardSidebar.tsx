@@ -8,6 +8,7 @@ const MENU_ITEMS = [
   { label: 'Hoje', icon: '📌', href: '#hoje' },
   { label: 'Projetos', icon: '📈', href: '#projetos' },
   { label: 'Financeiro', icon: '💰', href: '#financeiro' },
+  { label: 'Cursos', icon: '🎓', href: '/cursos' },
   { label: 'Escola MSD', icon: '👨‍🏫', href: '/escola-msd' },
   { label: 'Faculdade', icon: '🎓', href: '#faculdade' },
   { label: 'Inteligência Artificial', icon: '🤖', href: '#ia' },

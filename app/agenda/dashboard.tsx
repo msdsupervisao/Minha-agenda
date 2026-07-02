@@ -1,4 +1,5 @@
 import DashboardCard from '@/components/DashboardCard';
+import Link from 'next/link';
 
 export default function AgendaDashboard() {
   return (
@@ -11,6 +12,14 @@ export default function AgendaDashboard() {
             description="Hoje às 09:00"
             accent="Já chegou"
           />
+          <Link href="/cursos" className="group rounded-3xl border border-white/10 bg-gradient-to-br from-cyan-500/20 to-slate-950/80 p-6 shadow-xl shadow-cyan-500/10 backdrop-blur-xl transition hover:border-cyan-500/30 hover:shadow-cyan-500/20">
+            <p className="text-sm uppercase tracking-[0.24em] text-cyan-300">🎓 Cursos</p>
+            <p className="mt-4 text-2xl font-semibold text-white group-hover:text-cyan-100">Explorar cursos</p>
+            <p className="mt-2 text-sm text-slate-300">Aprenda novas habilidades</p>
+          </Link>
+        </div>
+
+        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-2">
           <DashboardCard
             title="Prioridades"
             value="4 itens"
