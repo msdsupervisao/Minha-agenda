@@ -11,7 +11,7 @@ const cursos = [
   {
     id: 1,
     title: 'Designer Gráfico',
-    description: 'Aprenda os fundamentos do design gráfico, composição, tipografia e criação de projetos visuais profissionais.',
+    description: 'Aprenda Photoshop, Illustrator, CorelDRAW e InDesign. Crie identidade visual, criação de artes e composição. Profissão em alta demanda no mercado.',
     image: '/api/placeholder/400/300',
     icon: '🎨',
   },
