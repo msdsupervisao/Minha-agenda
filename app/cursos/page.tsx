@@ -10,7 +10,7 @@ export const metadata = {
 const cursos = [
   {
     id: 1,
-    title: 'Design',
+    title: 'Designer Gráfico',
     description: 'Aprenda os fundamentos do design gráfico, composição, tipografia e criação de projetos visuais profissionais.',
     image: '/api/placeholder/400/300',
     icon: '🎨',
