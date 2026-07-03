@@ -89,17 +89,18 @@ const cursos = [
 
 export default async function CursosPage() {
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
-      <DashboardSidebar />
-      
-      <main className="lg:col-span-3">
-        <div className="space-y-6">
+    <main className="bg-slate-950 text-slate-100 min-h-screen">
+      <div className="mx-auto grid max-w-[1600px] gap-8 px-4 py-10 xl:grid-cols-[320px_1fr]">
+        <DashboardSidebar />
+
+        <div className="space-y-8">
           {/* Header */}
-          <div>
-            <h1 className="text-3xl font-bold text-white">Nossos Cursos</h1>
-            <p className="mt-2 text-slate-400">
-              Explore nossa seleção de cursos e aprenda novas habilidades
-            </p>
+          <div className="flex flex-col gap-6 rounded-[2rem] border border-white/10 bg-slate-900/80 p-8 shadow-2xl shadow-cyan-500/5 backdrop-blur-xl lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-sm uppercase tracking-[0.3em] text-cyan-300/70">Nossos Cursos</p>
+              <h1 className="mt-3 text-4xl font-semibold text-white">Explore e Aprenda</h1>
+              <p className="mt-2 text-slate-400">Conheça nossa seleção de cursos e desenvolva novas habilidades.</p>
+            </div>
           </div>
 
           {/* Grid de Cursos */}
@@ -115,7 +116,7 @@ export default async function CursosPage() {
             ))}
           </div>
         </div>
-      </main>
-    </div>
+      </div>
+    </main>
   );
 }
