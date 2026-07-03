@@ -17,16 +17,19 @@ export default function CourseCard({
   const [showInfo, setShowInfo] = useState(false);
 
   return (
-    <div className="group rounded-3xl border border-white/10 bg-slate-950/80 overflow-hidden shadow-xl shadow-cyan-500/5 backdrop-blur-xl transition hover:border-cyan-500/30 hover:shadow-xl hover:shadow-cyan-500/10 h-96">
+    <div className="group rounded-3xl border border-white/10 bg-slate-950/80 overflow-hidden shadow-xl shadow-cyan-500/5 backdrop-blur-xl transition hover:border-cyan-500/30 hover:shadow-xl hover:shadow-cyan-500/10 min-h-[28rem]">
       {!showInfo ? (
-        // Seção da Imagem
-        <div className="relative w-full h-full">
-          <Image
-            src={image}
-            alt={title}
-            fill
-            className="object-cover"
-          />
+        // Seção da Imagem (usar width/height ao invés de `fill` para evitar recorte)
+        <div className="relative w-full bg-slate-950/10 flex items-center justify-center p-4">
+          <div className="flex items-center justify-center w-full">
+            <Image
+              src={image}
+              alt={title}
+              width={1200}
+              height={900}
+              className="object-contain w-full h-auto max-h-[28rem]"
+            />
+          </div>
           {/* Overlay com botão */}
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-slate-950/90 flex flex-col justify-end p-6">
             <button
@@ -39,7 +42,7 @@ export default function CourseCard({
         </div>
       ) : (
         // Seção das Informações
-        <div className="w-full h-full bg-slate-950/80 p-6 flex flex-col justify-between">
+        <div className="w-full min-h-[28rem] bg-slate-950/80 p-6 flex flex-col justify-between">
           <div>
             <div className="flex items-start justify-between gap-3">
               <div className="flex-1">
