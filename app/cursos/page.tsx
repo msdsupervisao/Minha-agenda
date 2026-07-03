@@ -12,7 +12,7 @@ const cursos = [
     id: 1,
     title: 'Designer Gráfico',
     description: 'Aprenda Photoshop, Illustrator, CorelDRAW e InDesign. Crie identidade visual, criação de artes e composição. Profissão em alta demanda no mercado.',
-    image: 'https://images.unsplash.com/photo-1561070791-2526d30994b5?w=500&h=300&fit=crop',
+    image: '/cursos/designer-grafico.jpg.jpeg',
     icon: '🎨',
   },
   {
