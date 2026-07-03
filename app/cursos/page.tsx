@@ -89,7 +89,7 @@ const cursos = [
 
 export default async function CursosPage() {
   return (
-    <main className="bg-slate-950 text-slate-100 min-h-screen">
+    <main className="bg-slate-950 text-slate-100 min-h-screen overflow-x-hidden">
       <div className="mx-auto grid max-w-[1600px] gap-8 px-4 py-10 xl:grid-cols-[320px_1fr]">
         <DashboardSidebar />
 
