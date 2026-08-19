@@ -1,60 +1,46 @@
 # Minha Agenda
 
-Agenda pessoal com login, acessível de qualquer lugar. Feita em Next.js + Supabase (banco de dados e autenticação), do mesmo jeito que o Tom Certo.
+Assistente pessoal mobile-first: um único núcleo de voz recebe comandos naturais, interpreta uma ação e mostra o resultado sem transformar o fluxo em formulários.
 
-## 1. Criar o projeto no Supabase (gratuito)
+## Fase 5 — memória persistente com Supabase
 
-1. Acesse https://supabase.com e crie uma conta.
-2. Clique em "New project". Escolha um nome e uma senha para o banco (guarde essa senha).
-3. Espere o projeto terminar de ser criado (leva ~2 minutos).
-4. No menu lateral, vá em **SQL Editor** → **New query**.
-5. Abra o arquivo `supabase/schema.sql` deste projeto, copie todo o conteúdo, cole no editor e clique em **RUN**. Isso cria a tabela de compromissos com segurança (cada pessoa só vê os próprios dados).
-6. Vá em **Project Settings** (ícone de engrenagem) → **API**.
-7. Copie a **Project URL** e a chave **anon public**.
+- controle central de voz com Web Speech API e fallback de texto;
+- estados visuais: pronto, ouvindo, processando, executando, concluído, confirmação e erro;
+- Gyro Rings como núcleo interativo, com toque, arraste e respostas visuais por estado;
+- interpretação e execução separadas por intents validados;
+- criação e consulta de gastos, lembretes, notas, tarefas e eventos;
+- memória de contatos, contexto recente, resolução de homônimos e perguntas de continuação;
+- confirmação obrigatória antes de enviar mensagens;
+- histórico de ações, correção do último gasto e suporte a “desfaz isso”;
+- ações persistidas em memória local versionada enquanto o Supabase remoto não está configurado;
+- contrato `WhatsAppService` em modo mock: não envia nenhuma mensagem real.
+- Responses API com Structured Outputs rígido, provider configurável e validação no backend;
+- fallback local explícito quando não há chave, exibido na interface;
+- observabilidade segura de intent, latência, tokens, resultado e custo estimado.
+- autenticação mínima por e-mail e senha com sessão SSR persistente;
+- caminho principal `UI → API → service → repository → Supabase` quando configurado;
+- migrations versionadas, RLS por usuário e action logs persistentes;
+- contexto curto persistido, sem memória infinita;
+- modo local mantido somente como fallback de desenvolvimento.
 
-## 2. Configurar o projeto local
+Consulte [a implementação da Fase 5](docs/fase-5-supabase-persistencia.md), [a arquitetura da Fase 4](docs/fase-4-cerebro-openai.md), a [auditoria do Next.js 14](docs/nextjs-14-auditoria-seguranca.md) e a [migration Supabase](supabase/migrations/20260819000100_phase5_persistent_memory.sql).
 
-1. Extraia esta pasta em `C:\Users\Avodap\Minha Agenda` (ou onde preferir).
-2. Copie o arquivo `.env.local.example` e renomeie a cópia para `.env.local`.
-3. Abra `.env.local` e cole a URL e a chave que você copiou do Supabase:
+## Desenvolvimento
 
-```
-NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJxxxxx...
-```
-> A URL deve ser apenas o domínio do projeto, sem `/rest/v1` no final.
-4. Abra o terminal (CMD) nessa pasta e rode:
-
-```
+```bash
 npm install
 npm run dev
+npm test
 ```
 
-5. Acesse http://localhost:3000 — clique em **Criar conta**, entre com e-mail e senha, e comece a usar.
+Abra `http://localhost:3000`.
 
-> Por padrão o Supabase pede confirmação por e-mail ao criar conta. Se quiser pular essa etapa enquanto testa, vá em **Authentication → Providers → Email** no painel do Supabase e desative "Confirm email".
+Sem configuração Supabase, o aplicativo permanece em modo local para desenvolvimento. Com `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `/` exige autenticação e todos os comandos usam persistência real sujeita a RLS.
 
-## 3. Publicar na Vercel (igual ao Tom Certo)
+## Configuração de IA
 
-1. Suba esta pasta para um repositório novo no GitHub.
-2. Na Vercel, clique em **Add New → Project** e importe o repositório.
-3. Em **Environment Variables**, adicione as mesmas duas variáveis do `.env.local`.
-4. Clique em **Deploy**.
+Copie `.env.example` para `.env.local` e defina `AI_PROVIDER=openai` e `OPENAI_API_KEY`. Sem chave, a aplicação continua funcional em modo local e informa isso na tela. Segredos nunca devem usar o prefixo `NEXT_PUBLIC_`.
 
-## Estrutura do projeto
+Com uma chave válida, execute `npm run test:openai-live` para validar duas interpretações diretamente na API oficial, sem executar ações.
 
-```
-app/
-  login/          → tela de entrar/criar conta
-  agenda/          → tela principal (lista + formulário de novo compromisso)
-lib/supabase/      → conexão com o Supabase (navegador e servidor)
-supabase/schema.sql → script para criar a tabela no banco
-middleware.ts      → protege a rota /agenda para quem não fez login
-```
-
-## Próximos passos possíveis
-
-- Editar um compromisso já criado (hoje só dá pra concluir ou excluir)
-- Notificações/lembretes
-- Visualização em calendário (mês inteiro)
-- Repetir compromissos (diário, semanal)
+O banco remoto permanece desativado neste workspace até a configuração externa. O envio real de WhatsApp continua fora desta fase e permanece MOCK.
