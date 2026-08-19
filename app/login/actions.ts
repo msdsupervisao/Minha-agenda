@@ -1,45 +1,22 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import { z } from 'zod';
+import { createClient } from '@/lib/supabase/server';
+import { getSupabasePublicConfig } from '@/lib/supabase/config';
+import { AuthService } from '@/lib/auth/auth-service';
 
-export async function entrar(formData: FormData) {
-  const email = String(formData.get('email') || '');
-  const senha = String(formData.get('senha') || '');
+const LoginSchema = z.object({
+  email: z.string().trim().email().max(254),
+  password: z.string().min(6).max(200),
+});
 
+export async function login(formData: FormData) {
+  if (!getSupabasePublicConfig().configured) redirect('/login?error=not_configured');
+  const parsed = LoginSchema.safeParse({ email: formData.get('email'), password: formData.get('password') });
+  if (!parsed.success) redirect('/login?error=invalid_fields');
   const supabase = createClient();
-  const { error } = await supabase.auth.signInWithPassword({ email, password: senha });
-
-  if (error) {
-    redirect(`/login?erro=${encodeURIComponent(traduzErro(error.message))}`);
-  }
-
-  redirect('/agenda');
-}
-
-export async function cadastrar(formData: FormData) {
-  const email = String(formData.get('email') || '');
-  const senha = String(formData.get('senha') || '');
-
-  const supabase = createClient();
-  const { error } = await supabase.auth.signUp({ email, password: senha });
-
-  if (error) {
-    redirect(`/login?erro=${encodeURIComponent(traduzErro(error.message))}`);
-  }
-
-  redirect('/login?aviso=Conta criada. Verifique seu e-mail se a confirmação estiver ativada, ou apenas entre agora.');
-}
-
-export async function sair() {
-  const supabase = createClient();
-  await supabase.auth.signOut();
-  redirect('/login');
-}
-
-function traduzErro(mensagem: string) {
-  if (mensagem.includes('Invalid login credentials')) return 'E-mail ou senha incorretos.';
-  if (mensagem.includes('User already registered')) return 'Este e-mail já tem uma conta. Tente entrar.';
-  if (mensagem.includes('Password should be at least')) return 'A senha precisa ter pelo menos 6 caracteres.';
-  return mensagem;
+  try { await new AuthService(supabase.auth).login(parsed.data.email, parsed.data.password); }
+  catch { redirect('/login?error=invalid_credentials'); }
+  redirect('/');
 }
