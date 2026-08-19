@@ -1,13 +1,14 @@
+import AssistantHub from '@/components/AssistantHub';
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
+import { getAuthenticatedUser } from '@/lib/supabase/auth';
+import { getSupabasePublicConfig } from '@/lib/supabase/config';
+
+export const dynamic = 'force-dynamic';
 
 export default async function Home() {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (user) {
-    redirect('/agenda');
-  } else {
-    redirect('/login');
-  }
+  const dataConfig = getSupabasePublicConfig();
+  if (!dataConfig.configured) return <AssistantHub dataProvider="local" />;
+  const user = await getAuthenticatedUser();
+  if (!user) redirect('/login');
+  return <AssistantHub dataProvider="supabase" userEmail={user.email} />;
 }

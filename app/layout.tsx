@@ -3,7 +3,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Minha Agenda',
-  description: 'Tudo o que você precisa lembrar, num só lugar.',
+  description: 'Um lugar calmo para decidir o que merece atenção.',
 };
 
 export default function RootLayout({
@@ -13,7 +13,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR">
-      <body className="font-body min-h-screen">{children}</body>
+      <body>{children}</body>
     </html>
   );
 }
