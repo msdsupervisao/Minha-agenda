@@ -32,6 +32,7 @@ function wait(time: number) { return new Promise((resolve) => window.setTimeout(
 export default function AssistantHub({ dataProvider = 'local', userEmail = null }: { dataProvider?: DataProviderName; userEmail?: string | null }) {
   const [state, setState] = useState<AssistantState>('idle');
   const [transcript, setTranscript] = useState('');
+  const [input, setInput] = useState('');
   const [reply, setReply] = useState('Toque no núcleo e diga o que precisa.');
   const [pending, setPending] = useState<AssistantAction | null>(null);
   const [recent, setRecent] = useState<ActivityItem[]>([]);
@@ -162,7 +163,9 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null 
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    void processCommand(transcript, 'text');
+    const command = input;
+    setInput('');
+    void processCommand(command, 'text');
   }
 
   return <main className={styles.shell}>
@@ -197,7 +200,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null 
 
       <form className={styles.commandForm} onSubmit={submit}>
         <label htmlFor="command">Ou escreva um comando</label>
-        <div><input id="command" value={transcript} onChange={(event) => setTranscript(event.target.value)} placeholder="Ex.: me lembre de..." /><button type="submit" aria-label="Processar comando"><ArrowIcon /></button></div>
+        <div><input id="command" value={input} onChange={(event) => setInput(event.target.value)} placeholder="Ex.: me lembre de..." /><button type="submit" aria-label="Processar comando"><ArrowIcon /></button></div>
       </form>
     </section>
 
