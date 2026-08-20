@@ -19,6 +19,27 @@ const WHITE = new THREE.Color('#ffffff');
 const CORE_BLUE_GLOW = new THREE.Color('#0a7cb6');
 const CORE_WHITE_GLOW = new THREE.Color('#cfd8dc');
 
+let cachedGlow: THREE.CanvasTexture | null = null;
+function glowTexture() {
+  if (cachedGlow) return cachedGlow;
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    g.addColorStop(0, 'rgba(170,230,255,0.95)');
+    g.addColorStop(0.4, 'rgba(40,170,240,0.5)');
+    g.addColorStop(1, 'rgba(10,120,190,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+  }
+  cachedGlow = new THREE.CanvasTexture(canvas);
+  cachedGlow.colorSpace = THREE.SRGBColorSpace;
+  return cachedGlow;
+}
+
 const DEFAULTS = {
   rings: 6,
   finish: 'metal' as const,
@@ -105,6 +126,8 @@ class GyroScene {
   private key = new THREE.DirectionalLight(0xffffff, 0.9);
   private core!: THREE.Mesh;
   private coreMaterial!: THREE.MeshStandardMaterial;
+  private glow!: THREE.Sprite;
+  private glowMaterial!: THREE.SpriteMaterial;
   private config: Config;
   private state: AssistantState;
   private width = 0;
@@ -137,9 +160,14 @@ class GyroScene {
     this.key.position.set(0.4, 0.7, 1);
     this.camera.add(this.key);
     this.scene.add(this.ambient, this.camera, this.root);
-    this.coreMaterial = new THREE.MeshStandardMaterial({ color: new THREE.Color('#14b4ef'), emissive: new THREE.Color('#0a7cb6'), emissiveIntensity: 0.6, roughness: 0.3, metalness: 0.1 });
+    this.coreMaterial = new THREE.MeshStandardMaterial({ color: new THREE.Color('#14b4ef'), emissive: new THREE.Color('#0a7cb6'), emissiveIntensity: 0.85, roughness: 0.16, metalness: 0.05 });
     this.core = new THREE.Mesh(new THREE.SphereGeometry(0.2, 48, 48), this.coreMaterial);
     this.scene.add(this.core);
+    this.glowMaterial = new THREE.SpriteMaterial({ map: glowTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, opacity: 0.85 });
+    this.glow = new THREE.Sprite(this.glowMaterial);
+    this.glow.scale.setScalar(0.62);
+    this.glow.renderOrder = 20;
+    this.scene.add(this.glow);
     this.build();
     this.bindEvents();
     if (config.finish === 'metal') void this.ensureMatcap();
@@ -289,6 +317,8 @@ class GyroScene {
       const pulse = this.state === 'listening' ? 1 + 0.09 * Math.sin(now * 0.008) : this.state === 'success' ? 1.14 : 1;
       const scale = this.core.scale.x + (pulse - this.core.scale.x) * (1 - Math.exp(-delta * 6));
       this.core.scale.setScalar(scale);
+      this.glow.scale.setScalar(0.62 * scale);
+      this.glowMaterial.opacity = bright ? 1 : this.state === 'listening' ? 0.95 : 0.82;
       this.renderer.render(this.scene, this.camera);
     };
     loop();
@@ -301,6 +331,7 @@ class GyroScene {
     this.clear();
     this.core.geometry.dispose();
     this.coreMaterial.dispose();
+    this.glowMaterial.dispose();
     this.matcapMaterial.dispose();
     this.solidMaterial.dispose();
     this.renderer.dispose();
