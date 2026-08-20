@@ -199,7 +199,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null 
       </div>}
 
       <form className={styles.commandForm} onSubmit={submit}>
-        <label htmlFor="command">Ou escreva um comando</label>
+        <label htmlFor="command">Escreva o que você precisa</label>
         <div><input id="command" value={input} onChange={(event) => setInput(event.target.value)} placeholder="Ex.: me lembre de..." /><button type="submit" aria-label="Processar comando"><ArrowIcon /></button></div>
       </form>
     </section>
