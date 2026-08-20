@@ -14,6 +14,11 @@ const RING_ORIENTATION: Record<'x' | 'y' | 'z', [number, number, number]> = {
   z: [0, Math.PI / 2, 0],
 };
 
+const CORE_BLUE = new THREE.Color('#14b4ef');
+const WHITE = new THREE.Color('#ffffff');
+const CORE_BLUE_GLOW = new THREE.Color('#0a7cb6');
+const CORE_WHITE_GLOW = new THREE.Color('#cfd8dc');
+
 const DEFAULTS = {
   rings: 6,
   finish: 'metal' as const,
@@ -98,6 +103,8 @@ class GyroScene {
   private solidMaterial: THREE.MeshLambertMaterial;
   private ambient = new THREE.AmbientLight(0xffffff, 0.65);
   private key = new THREE.DirectionalLight(0xffffff, 0.9);
+  private core!: THREE.Mesh;
+  private coreMaterial!: THREE.MeshStandardMaterial;
   private config: Config;
   private state: AssistantState;
   private width = 0;
@@ -130,6 +137,12 @@ class GyroScene {
     this.key.position.set(0.4, 0.7, 1);
     this.camera.add(this.key);
     this.scene.add(this.ambient, this.camera, this.root);
+    this.coreMaterial = new THREE.MeshStandardMaterial({ color: new THREE.Color('#14b4ef'), emissive: new THREE.Color('#0a7cb6'), emissiveIntensity: 0.6, roughness: 0.3, metalness: 0.1 });
+    this.coreMaterial.depthTest = false;
+    this.coreMaterial.depthWrite = false;
+    this.core = new THREE.Mesh(new THREE.SphereGeometry(0.2, 48, 48), this.coreMaterial);
+    this.core.renderOrder = 10;
+    this.scene.add(this.core);
     this.build();
     this.bindEvents();
     if (config.finish === 'metal') void this.ensureMatcap();
@@ -273,6 +286,12 @@ class GyroScene {
       const stateMultiplier = this.state === 'listening' ? 2.5 : this.state === 'processing' ? 0.45 : this.state === 'action' ? 1.8 : this.state === 'success' ? 3.4 : 1;
       const base = clamp(this.config.spin, 1, 20, DEFAULTS.spin) * 0.09 * (1 + this.boost) * stateMultiplier;
       this.ringList.forEach((ring) => { ring.pivot.rotation[ring.axis] += base * ring.rate * delta; });
+      const bright = this.state === 'processing' || this.state === 'success';
+      this.coreMaterial.color.lerp(bright ? WHITE : CORE_BLUE, 1 - Math.exp(-delta * 6));
+      this.coreMaterial.emissive.lerp(bright ? CORE_WHITE_GLOW : CORE_BLUE_GLOW, 1 - Math.exp(-delta * 6));
+      const pulse = this.state === 'listening' ? 1 + 0.09 * Math.sin(now * 0.008) : this.state === 'success' ? 1.14 : 1;
+      const scale = this.core.scale.x + (pulse - this.core.scale.x) * (1 - Math.exp(-delta * 6));
+      this.core.scale.setScalar(scale);
       this.renderer.render(this.scene, this.camera);
     };
     loop();
@@ -283,6 +302,8 @@ class GyroScene {
     cancelAnimationFrame(this.frame);
     this.unbind();
     this.clear();
+    this.core.geometry.dispose();
+    this.coreMaterial.dispose();
     this.matcapMaterial.dispose();
     this.solidMaterial.dispose();
     this.renderer.dispose();
