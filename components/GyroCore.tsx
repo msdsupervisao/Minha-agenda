@@ -138,10 +138,7 @@ class GyroScene {
     this.camera.add(this.key);
     this.scene.add(this.ambient, this.camera, this.root);
     this.coreMaterial = new THREE.MeshStandardMaterial({ color: new THREE.Color('#14b4ef'), emissive: new THREE.Color('#0a7cb6'), emissiveIntensity: 0.6, roughness: 0.3, metalness: 0.1 });
-    this.coreMaterial.depthTest = false;
-    this.coreMaterial.depthWrite = false;
     this.core = new THREE.Mesh(new THREE.SphereGeometry(0.2, 48, 48), this.coreMaterial);
-    this.core.renderOrder = 10;
     this.scene.add(this.core);
     this.build();
     this.bindEvents();
