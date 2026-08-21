@@ -2,21 +2,13 @@ import { NextResponse } from 'next/server';
 import { createServiceClient, serviceConfigured } from '@/lib/supabase/service';
 import { pushConfigured, sendPush } from '@/lib/push/send';
 import { reminderPushPayload } from '@/lib/push/pure';
+import { isCronAuthorized } from '@/lib/push/cron-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-function authorized(request: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  const header = request.headers.get('x-cron-secret');
-  const bearer = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '');
-  const query = new URL(request.url).searchParams.get('secret');
-  return header === secret || bearer === secret || query === secret;
-}
-
 async function handle(request: Request) {
-  if (!authorized(request)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!isCronAuthorized(request.headers)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   if (!serviceConfigured() || !pushConfigured()) return NextResponse.json({ error: 'not_configured' }, { status: 503 });
 
   const client = createServiceClient();

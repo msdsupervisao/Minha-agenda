@@ -3,6 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isDue, reminderPushPayload, urlBase64ToUint8Array } from '../lib/push/pure';
+import { isCronAuthorized, secretMatches } from '../lib/push/cron-auth';
 
 const VAPID_PUBLIC = 'BMIU287pOgC0Y044cT0cQtaiT5Q1OX4T5eI_7ehuHIqULsW3yxiX39IaLU-O1F89p8CdcJkPj-p7jPC0r3-NW9w';
 
@@ -22,6 +23,42 @@ test('push: isDue compara pelo instante', () => {
   assert.equal(isDue('2026-08-21T11:59:00Z', now), true);
   assert.equal(isDue('2026-08-21T12:00:00Z', now), true);
   assert.equal(isDue('2026-08-21T12:01:00Z', now), false);
+});
+
+const ENV = { CRON_SECRET: 's3gr3do-forte' } as const;
+const headersWith = (init: Record<string, string>) => new Headers(init);
+
+test('cron: header x-cron-secret correto autoriza', () => {
+  assert.equal(isCronAuthorized(headersWith({ 'x-cron-secret': 's3gr3do-forte' }), ENV), true);
+});
+
+test('cron: Authorization Bearer correto autoriza', () => {
+  assert.equal(isCronAuthorized(headersWith({ authorization: 'Bearer s3gr3do-forte' }), ENV), true);
+});
+
+test('cron: segredo inválido é negado', () => {
+  assert.equal(isCronAuthorized(headersWith({ 'x-cron-secret': 'errado' }), ENV), false);
+});
+
+test('cron: sem header nenhum é negado', () => {
+  assert.equal(isCronAuthorized(headersWith({}), ENV), false);
+});
+
+test('cron: sem CRON_SECRET configurado nega tudo (nunca "aberto")', () => {
+  assert.equal(isCronAuthorized(headersWith({ 'x-cron-secret': 'qualquer' }), {}), false);
+  assert.equal(isCronAuthorized(headersWith({}), {}), false);
+});
+
+test('cron: segredo NÃO é aceito por query-string (evita vazamento em logs)', () => {
+  // isCronAuthorized só lê headers; um "?secret=" nunca autoriza.
+  assert.equal(isCronAuthorized(headersWith({}), ENV), false);
+});
+
+test('cron: comparação de segredo é resistente a tamanho e prefixo', () => {
+  assert.equal(secretMatches('s3gr3do-forte', 's3gr3do-forte'), true);
+  assert.equal(secretMatches('s3gr3do', 's3gr3do-forte'), false); // prefixo não passa
+  assert.equal(secretMatches('', 's3gr3do-forte'), false);
+  assert.equal(secretMatches('qualquer', undefined), false); // sem esperado, nega
 });
 
 test('push: migration cria push_subscriptions, notified_at, RLS e índices', () => {
