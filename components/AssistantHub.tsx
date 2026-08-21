@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { getBackendAiStatus } from '@/lib/assistant/backend-action-interpreter';
 import { createConversationClient, type ConversationClient, type DataProviderName } from '@/lib/assistant/conversation-client';
@@ -178,7 +179,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null 
     </header>
 
     <aside className={`${styles.navigation} ${menuOpen ? styles.navigationOpen : ''}`} aria-label="Navegação">
-      <span>central</span><button type="button">Hoje</button><button type="button">Agenda</button><button type="button">Finanças</button><button type="button">Turmas</button><button type="button">Ajustes</button>
+      <span>central</span><Link href="/hoje">Hoje</Link><Link href="/agenda">Agenda</Link><Link href="/financas">Finanças</Link><Link href="/turmas">Turmas</Link><Link href="/ajustes">Ajustes</Link>
     </aside>
 
     <section className={styles.hero}>
