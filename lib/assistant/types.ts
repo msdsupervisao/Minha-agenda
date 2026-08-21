@@ -74,6 +74,14 @@ export type CalendarEvent = BaseEntity & {
 
 export type Note = BaseEntity & { content: string; contactId: string | null };
 
+export type SchoolClass = BaseEntity & {
+  name: string;
+  course: string | null;
+  schedule: string | null;
+  teacher: string | null;
+  notes: string | null;
+};
+
 export type Message = BaseEntity & {
   channel: 'whatsapp';
   contactId: string | null;
