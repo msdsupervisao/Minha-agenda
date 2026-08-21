@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import AppShell from '@/components/AppShell';
+import PushToggle from '@/components/PushToggle';
 import screens from '@/components/screens/Screens.module.css';
 import { getSupabasePublicConfig } from '@/lib/supabase/config';
 import { getScreenContext } from '@/lib/data/screen-queries';
@@ -25,6 +26,10 @@ export default async function AjustesPage() {
   return (
     <AppShell title="Ajustes" subtitle="Preferências e conta." email={ctx.email}>
       <div className={screens.wrap}>
+        <p className={screens.sectionTitle}>Notificações</p>
+        <PushToggle />
+
+        <p className={screens.sectionTitle}>Conta e app</p>
         <ul className={screens.list}>
           {rows.map((row) => (
             <li key={row.label} className={screens.item}>
