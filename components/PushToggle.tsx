@@ -23,6 +23,17 @@ export default function PushToggle() {
       .catch(() => setState('off'));
   }, []);
 
+  // Cria a inscrição na registration atual, removendo qualquer inscrição
+  // pré-existente antes (ex.: criada com uma chave VAPID antiga).
+  async function subscribeFresh(reg: ServiceWorkerRegistration, key: string) {
+    const existing = await reg.pushManager.getSubscription();
+    if (existing) {
+      try { await fetch('/api/push/unsubscribe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ endpoint: existing.endpoint }) }); } catch {}
+      await existing.unsubscribe();
+    }
+    return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) as BufferSource });
+  }
+
   async function enable() {
     setBusy(true); setMsg(null);
     try {
@@ -30,15 +41,21 @@ export default function PushToggle() {
       if (permission !== 'granted') { setState(permission === 'denied' ? 'denied' : 'off'); return; }
       const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
       if (!key) { setMsg('Push não está configurado no servidor.'); return; }
-      const reg = await navigator.serviceWorker.ready;
-      // Remove inscrição pré-existente (ex.: criada com uma chave VAPID antiga)
-      // antes de recriar — senão o navegador lança InvalidStateError na troca de chave.
-      const existing = await reg.pushManager.getSubscription();
-      if (existing) {
-        try { await fetch('/api/push/unsubscribe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ endpoint: existing.endpoint }) }); } catch {}
-        await existing.unsubscribe();
+      let reg = await navigator.serviceWorker.ready;
+      let sub;
+      try {
+        sub = await subscribeFresh(reg, key);
+      } catch (err) {
+        // Após rotacionar a chave VAPID, uma inscrição antiga pode ficar "presa"
+        // (getSubscription retorna null mas o Chrome recusa a nova com
+        // InvalidAccessError/InvalidStateError). Reseta o service worker e tenta 1x.
+        const name = (err as { name?: string })?.name;
+        if (name !== 'InvalidAccessError' && name !== 'InvalidStateError') throw err;
+        try { await reg.unregister(); } catch {}
+        await navigator.serviceWorker.register('/sw.js');
+        reg = await navigator.serviceWorker.ready;
+        sub = await subscribeFresh(reg, key);
       }
-      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) as BufferSource });
       const res = await fetch('/api/push/subscribe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ subscription: sub.toJSON() }) });
       if (!res.ok) { setMsg('Não foi possível registrar a inscrição.'); return; }
       setState('on'); setMsg('Notificações ativadas neste aparelho.');
