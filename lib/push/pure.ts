@@ -24,3 +24,19 @@ export function pushSubscribeErrorMessage(status: number) {
   if (status === 401) return 'Sua sessão expirou. Faça login novamente e repita a ativação.';
   return 'Não foi possível registrar a inscrição.';
 }
+
+export function pushActivationErrorMessage(name?: string) {
+  if (name === 'PermissionTimeout') {
+    return 'O Android não concluiu a permissão. Feche esta tela, abra novamente e tente de novo.';
+  }
+  if (name === 'ServiceWorkerTimeout') {
+    return 'O Chrome não conseguiu preparar o serviço de notificações. Feche o app e abra novamente.';
+  }
+  if (name === 'PushSubscriptionTimeout' || name === 'AbortError') {
+    return 'O Android não conseguiu conectar ao serviço de notificações. Desative VPN e DNS privado, atualize o Chrome e os Serviços do Google Play e tente novamente.';
+  }
+  if (name === 'NotAllowedError') {
+    return 'A permissão de notificações está bloqueada. Libere-a nas configurações deste site.';
+  }
+  return `Falha ao ativar as notificações${name ? ` (${name})` : ''}.`;
+}

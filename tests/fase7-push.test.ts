@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { isDue, pushSubscribeErrorMessage, reminderPushPayload, urlBase64ToUint8Array } from '../lib/push/pure';
+import { isDue, pushActivationErrorMessage, pushSubscribeErrorMessage, reminderPushPayload, urlBase64ToUint8Array } from '../lib/push/pure';
 import { isCronAuthorized, secretMatches } from '../lib/push/cron-auth';
 
 const VAPID_PUBLIC = 'BMIU287pOgC0Y044cT0cQtaiT5Q1OX4T5eI_7ehuHIqULsW3yxiX39IaLU-O1F89p8CdcJkPj-p7jPC0r3-NW9w';
@@ -30,11 +30,21 @@ test('push: falha de persistência distingue sessão expirada', () => {
   assert.equal(pushSubscribeErrorMessage(500), 'Não foi possível registrar a inscrição.');
 });
 
+test('push: erros travados no Android recebem orientação específica', () => {
+  assert.match(pushActivationErrorMessage('PermissionTimeout'), /não concluiu a permissão/i);
+  assert.match(pushActivationErrorMessage('ServiceWorkerTimeout'), /preparar o serviço/i);
+  assert.match(pushActivationErrorMessage('PushSubscriptionTimeout'), /VPN e DNS privado/i);
+  assert.match(pushActivationErrorMessage('AbortError'), /Serviços do Google Play/i);
+  assert.match(pushActivationErrorMessage('NotAllowedError'), /permissão.*bloqueada/i);
+});
+
 test('push: ativação não desregistra o service worker e limpa inscrição não persistida', () => {
   const component = readFileSync(join(process.cwd(), 'components/PushToggle.tsx'), 'utf8');
   assert.doesNotMatch(component, /\.unregister\s*\(/);
   assert.match(component, /if \(!res\.ok\)[\s\S]*?sub\.unsubscribe\(\)/);
   assert.match(component, /if \(pendingSub\)[\s\S]*?pendingSub\.unsubscribe\(\)/);
+  assert.match(component, /navigator\.serviceWorker\.register\('\/sw\.js'\)/);
+  assert.match(component, /PushSubscriptionTimeout/);
 });
 
 const ENV = { CRON_SECRET: 's3gr3do-forte' } as const;

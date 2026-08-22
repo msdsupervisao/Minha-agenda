@@ -1,10 +1,26 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { pushSubscribeErrorMessage, urlBase64ToUint8Array } from '@/lib/push/pure';
+import { pushActivationErrorMessage, pushSubscribeErrorMessage, urlBase64ToUint8Array } from '@/lib/push/pure';
 import styles from './screens/Screens.module.css';
 
 type State = 'loading' | 'unsupported' | 'off' | 'on' | 'denied';
+
+function timeoutError(name: string) {
+  const error = new Error(name);
+  error.name = name;
+  return error;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorName: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(timeoutError(errorName)), timeoutMs);
+    promise.then(
+      (value) => { window.clearTimeout(timer); resolve(value); },
+      (error) => { window.clearTimeout(timer); reject(error); },
+    );
+  });
+}
 
 export default function PushToggle() {
   const [state, setState] = useState<State>('loading');
@@ -38,8 +54,15 @@ export default function PushToggle() {
     setBusy(true); setMsg(null);
     let pendingSub: PushSubscription | null = null;
     try {
-      const permission = await Notification.requestPermission();
-      if (permission !== 'granted') { setState(permission === 'denied' ? 'denied' : 'off'); return; }
+      setMsg('Aguardando a permissão do navegador…');
+      const permission = await withTimeout(Notification.requestPermission(), 30_000, 'PermissionTimeout');
+      if (permission !== 'granted') {
+        setState(permission === 'denied' ? 'denied' : 'off');
+        setMsg(permission === 'denied'
+          ? 'A permissão de notificações está bloqueada nas configurações deste site.'
+          : 'A permissão de notificações não foi concedida.');
+        return;
+      }
       // .trim() remove espaço/quebra de linha que às vezes entra ao colar a var no host.
       const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim();
       if (!key) { setMsg('Push não está configurado no servidor.'); return; }
@@ -54,9 +77,27 @@ export default function PushToggle() {
         setMsg(`Chave de push inválida no servidor (${key.length} caracteres). Reconfigure NEXT_PUBLIC_VAPID_PUBLIC_KEY.`);
         return;
       }
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await subscribeFresh(reg, appServerKey as BufferSource);
+
+      setMsg('Preparando o serviço de notificações…');
+      await withTimeout(navigator.serviceWorker.register('/sw.js'), 15_000, 'ServiceWorkerTimeout');
+      const reg = await withTimeout(navigator.serviceWorker.ready, 15_000, 'ServiceWorkerTimeout');
+
+      setMsg('Conectando ao serviço de notificações do Android…');
+      const subscriptionPromise = subscribeFresh(reg, appServerKey as BufferSource);
+      let sub: PushSubscription;
+      try {
+        sub = await withTimeout(subscriptionPromise, 25_000, 'PushSubscriptionTimeout');
+      } catch (error) {
+        // Se o Chrome concluir depois do timeout, remova a inscrição tardia para
+        // evitar novamente um estado local que não existe no servidor.
+        if ((error as { name?: string })?.name === 'PushSubscriptionTimeout') {
+          void subscriptionPromise.then(async (lateSub) => { try { await lateSub.unsubscribe(); } catch {} }).catch(() => {});
+        }
+        throw error;
+      }
       pendingSub = sub;
+
+      setMsg('Salvando a inscrição neste aparelho…');
       const res = await fetch('/api/push/subscribe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ subscription: sub.toJSON() }) });
       if (!res.ok) {
         // Não deixe uma inscrição apenas no navegador: após recarregar, ela faria
@@ -76,7 +117,7 @@ export default function PushToggle() {
         setState('off');
       }
       const name = (err as { name?: string })?.name;
-      setMsg(`Falha ao ativar as notificações${name ? ` (${name})` : ''}.`);
+      setMsg(pushActivationErrorMessage(name));
     } finally { setBusy(false); }
   }
 
