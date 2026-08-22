@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { urlBase64ToUint8Array } from '@/lib/push/pure';
+import { pushSubscribeErrorMessage, urlBase64ToUint8Array } from '@/lib/push/pure';
 import styles from './screens/Screens.module.css';
 
 type State = 'loading' | 'unsupported' | 'off' | 'on' | 'denied';
@@ -36,6 +36,7 @@ export default function PushToggle() {
 
   async function enable() {
     setBusy(true); setMsg(null);
+    let pendingSub: PushSubscription | null = null;
     try {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') { setState(permission === 'denied' ? 'denied' : 'off'); return; }
@@ -53,25 +54,27 @@ export default function PushToggle() {
         setMsg(`Chave de push inválida no servidor (${key.length} caracteres). Reconfigure NEXT_PUBLIC_VAPID_PUBLIC_KEY.`);
         return;
       }
-      let reg = await navigator.serviceWorker.ready;
-      let sub;
-      try {
-        sub = await subscribeFresh(reg, appServerKey as BufferSource);
-      } catch (err) {
-        // Após rotacionar a chave VAPID, uma inscrição antiga pode ficar "presa"
-        // (getSubscription retorna null mas o Chrome recusa a nova com
-        // InvalidAccessError/InvalidStateError). Reseta o service worker e tenta 1x.
-        const name = (err as { name?: string })?.name;
-        if (name !== 'InvalidAccessError' && name !== 'InvalidStateError') throw err;
-        try { await reg.unregister(); } catch {}
-        await navigator.serviceWorker.register('/sw.js');
-        reg = await navigator.serviceWorker.ready;
-        sub = await subscribeFresh(reg, appServerKey as BufferSource);
-      }
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await subscribeFresh(reg, appServerKey as BufferSource);
+      pendingSub = sub;
       const res = await fetch('/api/push/subscribe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ subscription: sub.toJSON() }) });
-      if (!res.ok) { setMsg('Não foi possível registrar a inscrição.'); return; }
+      if (!res.ok) {
+        // Não deixe uma inscrição apenas no navegador: após recarregar, ela faria
+        // a tela parecer ativada mesmo sem existir no banco.
+        try { await sub.unsubscribe(); } catch {}
+        setState('off');
+        setMsg(pushSubscribeErrorMessage(res.status));
+        return;
+      }
+      pendingSub = null;
       setState('on'); setMsg('Notificações ativadas neste aparelho.');
     } catch (err) {
+      // fetch também pode falhar sem resposta; nesse caso vale a mesma garantia:
+      // ou a inscrição foi persistida, ou ela não fica ativa só no aparelho.
+      if (pendingSub) {
+        try { await pendingSub.unsubscribe(); } catch {}
+        setState('off');
+      }
       const name = (err as { name?: string })?.name;
       setMsg(`Falha ao ativar as notificações${name ? ` (${name})` : ''}.`);
     } finally { setBusy(false); }

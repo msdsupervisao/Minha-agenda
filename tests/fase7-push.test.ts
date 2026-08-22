@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { isDue, reminderPushPayload, urlBase64ToUint8Array } from '../lib/push/pure';
+import { isDue, pushSubscribeErrorMessage, reminderPushPayload, urlBase64ToUint8Array } from '../lib/push/pure';
 import { isCronAuthorized, secretMatches } from '../lib/push/cron-auth';
 
 const VAPID_PUBLIC = 'BMIU287pOgC0Y044cT0cQtaiT5Q1OX4T5eI_7ehuHIqULsW3yxiX39IaLU-O1F89p8CdcJkPj-p7jPC0r3-NW9w';
@@ -23,6 +23,18 @@ test('push: isDue compara pelo instante', () => {
   assert.equal(isDue('2026-08-21T11:59:00Z', now), true);
   assert.equal(isDue('2026-08-21T12:00:00Z', now), true);
   assert.equal(isDue('2026-08-21T12:01:00Z', now), false);
+});
+
+test('push: falha de persistência distingue sessão expirada', () => {
+  assert.equal(pushSubscribeErrorMessage(401), 'Sua sessão expirou. Faça login novamente e repita a ativação.');
+  assert.equal(pushSubscribeErrorMessage(500), 'Não foi possível registrar a inscrição.');
+});
+
+test('push: ativação não desregistra o service worker e limpa inscrição não persistida', () => {
+  const component = readFileSync(join(process.cwd(), 'components/PushToggle.tsx'), 'utf8');
+  assert.doesNotMatch(component, /\.unregister\s*\(/);
+  assert.match(component, /if \(!res\.ok\)[\s\S]*?sub\.unsubscribe\(\)/);
+  assert.match(component, /if \(pendingSub\)[\s\S]*?pendingSub\.unsubscribe\(\)/);
 });
 
 const ENV = { CRON_SECRET: 's3gr3do-forte' } as const;

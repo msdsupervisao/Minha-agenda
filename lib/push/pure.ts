@@ -19,3 +19,8 @@ export function isDue(dueAtIso: string, now: Date = new Date()) {
   const due = new Date(dueAtIso).getTime();
   return Number.isFinite(due) && due <= now.getTime();
 }
+
+export function pushSubscribeErrorMessage(status: number) {
+  if (status === 401) return 'Sua sessão expirou. Faça login novamente e repita a ativação.';
+  return 'Não foi possível registrar a inscrição.';
+}
