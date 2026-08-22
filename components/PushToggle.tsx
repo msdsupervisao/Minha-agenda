@@ -31,12 +31,20 @@ export default function PushToggle() {
       const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
       if (!key) { setMsg('Push não está configurado no servidor.'); return; }
       const reg = await navigator.serviceWorker.ready;
+      // Remove inscrição pré-existente (ex.: criada com uma chave VAPID antiga)
+      // antes de recriar — senão o navegador lança InvalidStateError na troca de chave.
+      const existing = await reg.pushManager.getSubscription();
+      if (existing) {
+        try { await fetch('/api/push/unsubscribe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ endpoint: existing.endpoint }) }); } catch {}
+        await existing.unsubscribe();
+      }
       const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) as BufferSource });
       const res = await fetch('/api/push/subscribe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ subscription: sub.toJSON() }) });
       if (!res.ok) { setMsg('Não foi possível registrar a inscrição.'); return; }
       setState('on'); setMsg('Notificações ativadas neste aparelho.');
-    } catch {
-      setMsg('Falha ao ativar as notificações.');
+    } catch (err) {
+      const name = (err as { name?: string })?.name;
+      setMsg(`Falha ao ativar as notificações${name ? ` (${name})` : ''}.`);
     } finally { setBusy(false); }
   }
 
