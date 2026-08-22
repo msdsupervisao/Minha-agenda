@@ -25,13 +25,13 @@ export default function PushToggle() {
 
   // Cria a inscrição na registration atual, removendo qualquer inscrição
   // pré-existente antes (ex.: criada com uma chave VAPID antiga).
-  async function subscribeFresh(reg: ServiceWorkerRegistration, key: string) {
+  async function subscribeFresh(reg: ServiceWorkerRegistration, appServerKey: BufferSource) {
     const existing = await reg.pushManager.getSubscription();
     if (existing) {
       try { await fetch('/api/push/unsubscribe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ endpoint: existing.endpoint }) }); } catch {}
       await existing.unsubscribe();
     }
-    return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) as BufferSource });
+    return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appServerKey });
   }
 
   async function enable() {
@@ -39,12 +39,24 @@ export default function PushToggle() {
     try {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') { setState(permission === 'denied' ? 'denied' : 'off'); return; }
-      const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      // .trim() remove espaço/quebra de linha que às vezes entra ao colar a var no host.
+      const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim();
       if (!key) { setMsg('Push não está configurado no servidor.'); return; }
+      // Valida a chave ANTES de tentar inscrever: o Chrome só aceita um ponto
+      // P-256 não comprimido (65 bytes, começa em 0x04). Se falhar aqui, a var
+      // NEXT_PUBLIC_VAPID_PUBLIC_KEY no servidor está corrompida/truncada.
+      let appServerKey: Uint8Array;
+      try {
+        appServerKey = urlBase64ToUint8Array(key);
+        if (appServerKey.length !== 65 || appServerKey[0] !== 0x04) throw new Error('formato');
+      } catch {
+        setMsg(`Chave de push inválida no servidor (${key.length} caracteres). Reconfigure NEXT_PUBLIC_VAPID_PUBLIC_KEY.`);
+        return;
+      }
       let reg = await navigator.serviceWorker.ready;
       let sub;
       try {
-        sub = await subscribeFresh(reg, key);
+        sub = await subscribeFresh(reg, appServerKey as BufferSource);
       } catch (err) {
         // Após rotacionar a chave VAPID, uma inscrição antiga pode ficar "presa"
         // (getSubscription retorna null mas o Chrome recusa a nova com
@@ -54,7 +66,7 @@ export default function PushToggle() {
         try { await reg.unregister(); } catch {}
         await navigator.serviceWorker.register('/sw.js');
         reg = await navigator.serviceWorker.ready;
-        sub = await subscribeFresh(reg, key);
+        sub = await subscribeFresh(reg, appServerKey as BufferSource);
       }
       const res = await fetch('/api/push/subscribe', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ subscription: sub.toJSON() }) });
       if (!res.ok) { setMsg('Não foi possível registrar a inscrição.'); return; }
