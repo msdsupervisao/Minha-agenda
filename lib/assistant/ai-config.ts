@@ -8,6 +8,7 @@ export type AiRuntimeConfig = {
   apiKey: string | null;
   notice: string;
   fallbackReason: 'missing_api_key' | null;
+  localFirst: boolean;
 };
 
 export function getAiRuntimeConfig(env: Readonly<Record<string, string | undefined>> = process.env): AiRuntimeConfig {
@@ -19,10 +20,14 @@ export function getAiRuntimeConfig(env: Readonly<Record<string, string | undefin
   const activeProvider: AiProviderName = missingKey ? 'local' : requestedProvider;
   const parsedTimeout = Number(env.OPENAI_TIMEOUT_MS || 8000);
   const timeoutMs = Number.isFinite(parsedTimeout) ? Math.max(1000, Math.min(30000, parsedTimeout)) : 8000;
+  // Híbrido: com a OpenAI ativa, tenta o interpretador local primeiro e só gasta
+  // a OpenAI quando o local não entende. Desligável com AI_LOCAL_FIRST=false.
+  const localFirst = activeProvider === 'openai' && env.AI_LOCAL_FIRST?.trim().toLowerCase() !== 'false';
   return {
     requestedProvider, activeProvider, apiKey,
     model: env.OPENAI_MODEL?.trim() || 'gpt-5.4-mini', timeoutMs,
     notice: activeProvider === 'local' ? 'Modo local ativo.' : 'OpenAI ativa.',
     fallbackReason: missingKey ? 'missing_api_key' : null,
+    localFirst,
   };
 }

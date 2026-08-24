@@ -16,6 +16,24 @@ export async function interpretOnServer(
   options: { env?: Readonly<Record<string, string | undefined>>; provider?: IntentProvider; config?: AiRuntimeConfig } = {},
 ): Promise<ServerInterpretationResult> {
   const config = options.config || getAiRuntimeConfig(options.env);
+
+  // Híbrido local-first: com a OpenAI ativa, tenta o interpretador local (grátis
+  // e instantâneo) antes de gastar uma chamada paga. Só cai para a OpenAI quando
+  // o local não consegue interpretar. Pulado quando um provider é injetado (testes).
+  if (config.localFirst && !options.provider) {
+    const startedAt = performance.now();
+    const response = await new LocalIntentProvider().interpret(request);
+    const action = actionFromStructured(response.interpretation, response.provider);
+    if (action) {
+      const latencyMs = Math.round(performance.now() - startedAt);
+      const observation = recordAiObservation({
+        actionId: makeId(), provider: response.provider, model: response.model, intent: action.intent,
+        latencyMs, result: 'success', errorCode: null, ...response.usage,
+      });
+      return { action, provider: response.provider, notice: config.notice, observationId: observation.id, model: response.model, latencyMs, usage: response.usage };
+    }
+  }
+
   const provider = options.provider || createProvider(config);
   const actionId = makeId();
   const startedAt = performance.now();
