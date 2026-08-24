@@ -8,7 +8,7 @@ import { interpretOnServer } from '../lib/assistant/ai-runtime';
 import { ConversationEngine } from '../lib/assistant/conversation-engine';
 import { interpretCommand } from '../lib/assistant/interpreter';
 import { OperationalMemoryRepository, type StorageLike } from '../lib/assistant/memory';
-import { parseDate } from '../lib/assistant/parsing';
+import { parseDate, combineDateTime } from '../lib/assistant/parsing';
 import type { ActionInterpreter, AssistantAction, InterpretationContext } from '../lib/assistant/types';
 
 class TestStorage implements StorageLike {
@@ -98,13 +98,31 @@ test('gasto sem valor pergunta antes de executar', async () => {
   assert.equal(repository.read().expenses[0].amount, 32.5);
 });
 
-test('datas relativas usam a data atual fornecida', () => {
-  assert.equal(parseDate('depois de amanhã', now)?.getDate(), 21);
-  assert.equal(parseDate('sexta', now)?.getDate(), 21);
-  assert.equal(parseDate('segunda', now)?.getDate(), 24);
-  assert.equal(parseDate('semana que vem', now)?.getDate(), 24);
-  assert.equal(parseDate('mês que vem', now)?.getMonth(), 8);
-  assert.equal(parseDate('mês que vem', now)?.getDate(), 1);
+test('datas relativas usam a data atual no fuso do app (campos UTC = parede)', () => {
+  const tz = 'America/Cuiaba';
+  const ref = new Date('2026-08-19T13:00:00Z'); // 09:00 em Cuiabá (UTC-4), uma quarta-feira
+  assert.equal(parseDate('depois de amanhã', ref, tz)?.getUTCDate(), 21);
+  assert.equal(parseDate('sexta', ref, tz)?.getUTCDate(), 21);
+  assert.equal(parseDate('segunda', ref, tz)?.getUTCDate(), 24);
+  assert.equal(parseDate('semana que vem', ref, tz)?.getUTCDate(), 24);
+  assert.equal(parseDate('mês que vem', ref, tz)?.getUTCMonth(), 8);
+  assert.equal(parseDate('mês que vem', ref, tz)?.getUTCDate(), 1);
+});
+
+test('“hoje” à noite em Cuiabá não vira amanhã (bug de fuso corrigido)', () => {
+  const tz = 'America/Cuiaba';
+  // 2026-08-20T02:30:00Z = 22:30 do dia 19 em Cuiabá; "hoje" tem que ser o dia 19.
+  const ref = new Date('2026-08-20T02:30:00Z');
+  assert.equal(parseDate('hoje', ref, tz)?.getUTCDate(), 19);
+  // "hoje às 23h" em Cuiabá (dia 19) = 2026-08-20T03:00:00Z, não 23h UTC.
+  assert.equal(combineDateTime(parseDate('hoje', ref, tz)!, { hour: 23, minute: 0 }, tz), '2026-08-20T03:00:00.000Z');
+});
+
+test('dia da semana à noite não pula uma semana (domingo continua o próximo domingo real)', () => {
+  const tz = 'America/Cuiaba';
+  // 2026-08-23T02:00:00Z = 22:00 de sábado 22 em Cuiabá. "domingo" deve ser o dia 23.
+  const ref = new Date('2026-08-23T02:00:00Z');
+  assert.equal(parseDate('domingo', ref, tz)?.getUTCDate(), 23);
 });
 
 test('fallback local cobre as frases portuguesas novas', () => {
@@ -115,7 +133,7 @@ test('fallback local cobre as frases portuguesas novas', () => {
 
   const friday = interpretCommand('Me lembra sexta de cobrar o professor.', now)!;
   assert.equal(friday.intent, 'create_reminder');
-  assert.equal(new Date(String(friday.data.dueAt)).getDate(), 21);
+  assert.equal(new Date(String(friday.data.dueAt)).getUTCDate(), 21);
   assert.equal(friday.data.title, 'cobrar o professor');
 
   assert.equal(interpretCommand('Quanto eu gastei com combustível este mês?', now)?.intent, 'read_expenses');

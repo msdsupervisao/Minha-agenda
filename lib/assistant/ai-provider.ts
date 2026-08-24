@@ -67,7 +67,7 @@ export class OpenAIIntentProvider implements IntentProvider {
 export class LocalIntentProvider implements IntentProvider {
   readonly name = 'local' as const;
   async interpret(request: ProviderRequest): Promise<ProviderResponse> {
-    const action = interpretCommand(request.text, request.now);
+    const action = interpretCommand(request.text, request.now, request.timezone);
     return { provider: this.name, model: null, interpretation: structuredFromAction(action), usage: emptyUsage() };
   }
 }

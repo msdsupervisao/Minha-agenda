@@ -1,12 +1,13 @@
 import { extractAmount, contactNameFrom, parseDate, parseTime, combineDateTime } from './parsing';
 import { makeId, normalize, resolveRange, titleCase } from './memory';
+import { appTimezone } from '../data/time';
 import type { AssistantAction } from './types';
 
 function action(intent: AssistantAction['intent'], title: string, summary: string, data: AssistantAction['data'] = {}, requiresConfirmation = false): AssistantAction {
   return { id: makeId(), intent, title, summary, data, requiresConfirmation };
 }
 
-export function interpretCommand(input: string, now = new Date()): AssistantAction | null {
+export function interpretCommand(input: string, now = new Date(), tz = appTimezone()): AssistantAction | null {
   const text = input.trim();
   const clean = normalize(text);
   if (!clean) return null;
@@ -50,7 +51,7 @@ export function interpretCommand(input: string, now = new Date()): AssistantActi
   }
 
   if (/^(?:me\s+)?lembr[ea](?:-me)?\b/.test(clean)) {
-    const date = parseDate(text, now);
+    const date = parseDate(text, now, tz);
     const time = parseTime(text);
     let title = text.replace(/^(?:me\s+)?lembr[ea](?:-me)?(?:\s+de)?\s*/i, '')
       .replace(/(?:depois\s+de\s+amanhã|depois\s+de\s+amanha|amanhã|amanha|hoje|semana\s+que\s+vem|próxima\s+semana|proxima\s+semana|mês\s+que\s+vem|mes\s+que\s+vem|próximo\s+mês|proximo\s+mes)/gi, '')
@@ -59,7 +60,7 @@ export function interpretCommand(input: string, now = new Date()): AssistantActi
     const contactName = contactNameFrom(title);
     if (/^(hoje|amanh[ãa])$/i.test(title)) title = '';
     const requiresMessageDetail = /^mandar\s+(?:uma\s+)?mensagem\s+(?:para|pro|pra)\s+[\p{L}'-]+\s*$/iu.test(title);
-    return action('create_reminder', title || 'Lembrete', '', { title, dueAt: date ? combineDateTime(date, time) : null, contactName, requiresMessageDetail });
+    return action('create_reminder', title || 'Lembrete', '', { title, dueAt: date ? combineDateTime(date, time, tz) : null, contactName, requiresMessageDetail });
   }
 
   if (/^(?:anota|anote)\b/.test(clean)) {
@@ -69,14 +70,14 @@ export function interpretCommand(input: string, now = new Date()): AssistantActi
 
   if (/^(?:crie\s+)?(?:uma\s+)?tarefa\b|^preciso\b/.test(clean)) {
     const title = text.replace(/^(?:crie\s+)?(?:uma\s+)?tarefa(?:\s+para)?\s*|^preciso\s*/i, '').replace(/[.!?]+$/, '');
-    const date = parseDate(text, now);
-    return action('create_task', title, '', { title, dueAt: date ? combineDateTime(date, parseTime(text)) : null, contactName: contactNameFrom(title) });
+    const date = parseDate(text, now, tz);
+    return action('create_task', title, '', { title, dueAt: date ? combineDateTime(date, parseTime(text), tz) : null, contactName: contactNameFrom(title) });
   }
 
   if (/^(?:agende|marque|crie)\b/.test(clean)) {
     const title = text.replace(/^(?:agende|marque|crie)(?:\s+um)?\s*(?:evento|compromisso)?\s*/i, '').replace(/[.!?]+$/, '');
-    const date = parseDate(text, now);
-    return action('create_event', title, '', { title, startsAt: date ? combineDateTime(date, parseTime(text)) : null, contactName: contactNameFrom(title) });
+    const date = parseDate(text, now, tz);
+    return action('create_event', title, '', { title, startsAt: date ? combineDateTime(date, parseTime(text), tz) : null, contactName: contactNameFrom(title) });
   }
 
   if (/^procure|^busque|^lembra de/.test(clean)) return action('search_memory', 'Pesquisar memória', '', { query: text.replace(/^(procure|busque|lembra de)\s*/i, '') });

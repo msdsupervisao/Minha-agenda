@@ -1,4 +1,7 @@
 import { normalize } from './memory';
+import { appTimezone, tzOffsetMs, wallTimeToUtcIso } from '../data/time';
+
+const pad = (n: number) => String(n).padStart(2, '0');
 
 const units: Record<string, number> = { zero: 0, um: 1, uma: 1, dois: 2, duas: 2, tres: 3, quatro: 4, cinco: 5, seis: 6, sete: 7, oito: 8, nove: 9, dez: 10, onze: 11, doze: 12, treze: 13, quatorze: 14, catorze: 14, quinze: 15, dezesseis: 16, dezessete: 17, dezoito: 18, dezenove: 19 };
 const tens: Record<string, number> = { vinte: 20, trinta: 30, quarenta: 40, cinquenta: 50, sessenta: 60, setenta: 70, oitenta: 80, noventa: 90 };
@@ -25,25 +28,31 @@ export function extractAmount(text: string) {
   return wordMatch ? { amount: parseNumber(wordMatch[1]), raw: wordMatch[0] } : { amount: null, raw: '' };
 }
 
-export function parseDate(text: string, reference = new Date()) {
+/**
+ * Interpreta datas relativas no FUSO DO APP (não no relógio do servidor, que
+ * em produção é UTC). `date` retornado carrega a data de parede nos campos UTC
+ * (meia-noite local), para ser convertido em instante por combineDateTime.
+ */
+export function parseDate(text: string, reference = new Date(), tz = appTimezone()) {
   const clean = normalize(text);
-  const date = new Date(reference);
-  if (clean.includes('depois de amanha')) date.setDate(date.getDate() + 2);
-  else if (clean.includes('amanha')) date.setDate(date.getDate() + 1);
+  // "wall": Date cujos campos UTC representam a hora de parede no fuso do app.
+  const date = new Date(reference.getTime() + tzOffsetMs(reference, tz));
+  if (clean.includes('depois de amanha')) date.setUTCDate(date.getUTCDate() + 2);
+  else if (clean.includes('amanha')) date.setUTCDate(date.getUTCDate() + 1);
   else if (clean.includes('semana que vem') || clean.includes('proxima semana')) {
-    const untilMonday = (8 - date.getDay()) % 7 || 7;
-    date.setDate(date.getDate() + untilMonday);
+    const untilMonday = (8 - date.getUTCDay()) % 7 || 7;
+    date.setUTCDate(date.getUTCDate() + untilMonday);
   } else if (clean.includes('mes que vem') || clean.includes('proximo mes')) {
-    date.setMonth(date.getMonth() + 1, 1);
+    date.setUTCMonth(date.getUTCMonth() + 1, 1);
   } else {
     const weekdays: Record<string, number> = { domingo: 0, segunda: 1, terca: 2, quarta: 3, quinta: 4, sexta: 5, sabado: 6 };
     const weekday = Object.entries(weekdays).find(([name]) => new RegExp(`\\b${name}(?:-feira)?\\b`).test(clean));
     if (weekday) {
-      const delta = (weekday[1] - date.getDay() + 7) % 7 || 7;
-      date.setDate(date.getDate() + delta);
+      const delta = (weekday[1] - date.getUTCDay() + 7) % 7 || 7;
+      date.setUTCDate(date.getUTCDate() + delta);
     } else if (!clean.includes('hoje')) return null;
   }
-  date.setHours(0, 0, 0, 0);
+  date.setUTCHours(0, 0, 0, 0);
   return date;
 }
 
@@ -55,10 +64,15 @@ export function parseTime(text: string) {
   return word ? { hour: word[1], minute: 0 } : null;
 }
 
-export function combineDateTime(date: Date, time: { hour: number; minute: number } | null) {
-  const result = new Date(date);
-  result.setHours(time?.hour ?? 0, time?.minute ?? 0, 0, 0);
-  return result.toISOString();
+/**
+ * Combina a data de parede (campos UTC) com o horário informado e converte para
+ * instante UTC ISO respeitando o fuso do app. Assim "hoje às 9h" em Cuiabá vira
+ * o instante correto, e não 9h UTC.
+ */
+export function combineDateTime(date: Date, time: { hour: number; minute: number } | null, tz = appTimezone()) {
+  const wall = `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`
+    + `T${pad(time?.hour ?? 0)}:${pad(time?.minute ?? 0)}`;
+  return wallTimeToUtcIso(wall, tz);
 }
 
 export function contactNameFrom(text: string) {
