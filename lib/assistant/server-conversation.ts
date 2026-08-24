@@ -3,6 +3,8 @@ import { getAiRuntimeConfig } from './ai-config';
 import { interpretOnServer, type ServerInterpretationResult } from './ai-runtime';
 import { ConversationEngine } from './conversation-engine';
 import { volatileMemoryRepository } from './memory';
+import { MockWhatsAppService } from './whatsapp-service';
+import { CloudWhatsAppService, whatsappCloudConfig } from './whatsapp-cloud';
 import type { ActionInterpreter, Source } from './types';
 import { SupabaseMemoryRepository } from '@/lib/data/supabase-memory-repository';
 import { appTimezone } from '@/lib/data/time';
@@ -29,7 +31,9 @@ export async function runPersistentConversation(
       return aiResult;
     },
   };
-  const engine = new ConversationEngine(local, undefined, interpreter, timezone);
+  const cloudConfig = whatsappCloudConfig();
+  const whatsapp = cloudConfig ? new CloudWhatsAppService(local, cloudConfig) : new MockWhatsAppService(local);
+  const engine = new ConversationEngine(local, whatsapp, interpreter, timezone);
   const result = await engine.process(text, source);
   const after = local.read();
   await persistent.persist(before, after);
