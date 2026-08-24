@@ -23,10 +23,12 @@ export async function executeAction(
   }
 
   if (action.intent === 'create_reminder') {
-    const reminder: Reminder = { id: makeId(), userId: memory.userId, createdAt: now, updatedAt: now, title: String(action.data.title), dueAt: String(action.data.dueAt), contactId: stringOrNull(action.data.contactId), notificationStatus: 'pending' };
+    const recurrence = recurrenceOrNull(action.data.recurrence);
+    const reminder: Reminder = { id: makeId(), userId: memory.userId, createdAt: now, updatedAt: now, title: String(action.data.title), dueAt: String(action.data.dueAt), contactId: stringOrNull(action.data.contactId), notificationStatus: 'pending', recurrence };
     repository.update((state) => state.reminders.unshift(reminder));
     repository.log({ intent: action.intent, entityType: 'reminder', entityId: reminder.id, summary: reminder.title, source, reversible: true, before: null, after: reminder });
-    return { reply: `Pronto. Vou te lembrar ${friendlyDate(reminder.dueAt, timezone)} de ${lowerFirst(reminder.title)}.`, entityId: reminder.id };
+    const when = recurrence ? recurrenceLabel(recurrence, reminder.dueAt, timezone) : friendlyDate(reminder.dueAt, timezone);
+    return { reply: `Pronto. Vou te lembrar ${when} de ${lowerFirst(reminder.title)}.`, entityId: reminder.id };
   }
 
   if (action.intent === 'create_note') {
@@ -155,4 +157,12 @@ function friendlyDate(value: string, tz: string) {
   return new Intl.DateTimeFormat('pt-BR', { timeZone: tz, weekday: 'long', day: 'numeric', month: 'long', hour: hasTime ? '2-digit' : undefined, minute: hasTime ? '2-digit' : undefined }).format(date);
 }
 function lowerFirst(value: string) { return value.charAt(0).toLocaleLowerCase('pt-BR') + value.slice(1); }
+function recurrenceOrNull(value: unknown): 'daily' | 'weekly' | 'monthly' | null { return value === 'daily' || value === 'weekly' || value === 'monthly' ? value : null; }
+function recurrenceLabel(freq: 'daily' | 'weekly' | 'monthly', iso: string, tz: string) {
+  const date = new Date(iso);
+  const time = new Intl.DateTimeFormat('pt-BR', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(date);
+  if (freq === 'daily') return `todos os dias às ${time}`;
+  if (freq === 'weekly') return `toda ${new Intl.DateTimeFormat('pt-BR', { timeZone: tz, weekday: 'long' }).format(date)} às ${time}`;
+  return `todo mês no dia ${new Intl.DateTimeFormat('pt-BR', { timeZone: tz, day: 'numeric' }).format(date)} às ${time}`;
+}
 function describeContact(contact: { name: string; role: string | null; className: string | null }) { return `${contact.name}${contact.role ? `, ${contact.role}` : ''}${contact.className ? ` de ${contact.className}` : ''}`; }

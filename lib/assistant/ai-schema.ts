@@ -19,6 +19,7 @@ export const AiEntitiesSchema = z.object({
   title: z.string().max(500).nullable(),
   content: z.string().max(2000).nullable(),
   due_at: z.string().max(80).nullable(),
+  recurrence: z.enum(['daily', 'weekly', 'monthly']).nullable(),
   starts_at: z.string().max(80).nullable(),
   range: z.enum(rangeValues).nullable(),
   status: z.enum(['open', 'done', 'overdue']).nullable(),
@@ -69,7 +70,7 @@ export function actionFromStructured(value: AiStructuredInterpretation, provider
   };
   switch (value.intent) {
     case 'create_expense': return { ...common, title: `Gasto em ${e.category || 'geral'}`, data: { amount: e.amount, currency: e.currency || 'BRL', category: e.category || 'geral', occurredAt: e.occurred_at } };
-    case 'create_reminder': return { ...common, title: e.title || 'Lembrete', data: { title: e.title, dueAt: e.due_at, contactName: e.contact_name, requiresMessageDetail: e.requires_message_detail } };
+    case 'create_reminder': return { ...common, title: e.title || 'Lembrete', data: { title: e.title, dueAt: e.due_at, contactName: e.contact_name, requiresMessageDetail: e.requires_message_detail, recurrence: e.recurrence } };
     case 'create_note': return { ...common, title: e.content || 'Anotação', data: { content: e.content, contactName: e.contact_name } };
     case 'create_task': return { ...common, title: e.title || 'Tarefa', data: { title: e.title, dueAt: e.due_at, contactName: e.contact_name } };
     case 'create_event': return { ...common, title: e.title || 'Evento', data: { title: e.title, startsAt: e.starts_at, contactName: e.contact_name } };
@@ -97,7 +98,7 @@ export function structuredFromAction(action: AssistantAction | null): AiStructur
       amount: numberOrNull(data.amount), currency: data.currency === 'BRL' ? 'BRL' : null,
       category: stringOrNull(data.category), occurred_at: stringOrNull(data.occurredAt),
       title: stringOrNull(data.title), content: stringOrNull(data.content),
-      due_at: stringOrNull(data.dueAt), starts_at: stringOrNull(data.startsAt),
+      due_at: stringOrNull(data.dueAt), recurrence: isRecurrence(data.recurrence) ? data.recurrence : null, starts_at: stringOrNull(data.startsAt),
       range: isRange(data.range) ? data.range : null,
       status: data.status === 'open' || data.status === 'done' || data.status === 'overdue' ? data.status : null,
       query: stringOrNull(data.query), contact_name: stringOrNull(data.contactName) || stringOrNull(data.name),
@@ -113,3 +114,4 @@ export function structuredFromAction(action: AssistantAction | null): AiStructur
 function stringOrNull(value: unknown) { return typeof value === 'string' && value.trim() ? value.trim() : null; }
 function numberOrNull(value: unknown) { return typeof value === 'number' && Number.isFinite(value) ? value : null; }
 function isRange(value: unknown): value is AiStructuredInterpretation['entities']['range'] { return typeof value === 'string' && (rangeValues as readonly string[]).includes(value); }
+function isRecurrence(value: unknown): value is 'daily' | 'weekly' | 'monthly' { return value === 'daily' || value === 'weekly' || value === 'monthly'; }

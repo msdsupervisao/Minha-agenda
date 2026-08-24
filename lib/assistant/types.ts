@@ -17,6 +17,7 @@ export type Intent =
 
 export type EntityType = 'contact' | 'expense' | 'task' | 'reminder' | 'event' | 'note' | 'message';
 export type Source = 'voice' | 'text';
+export type Recurrence = 'daily' | 'weekly' | 'monthly';
 export type DateRange = 'today' | 'tomorrow' | 'week' | 'next_week' | 'month' | 'next_month' | 'all';
 export type AiProviderName = 'openai' | 'local';
 
@@ -63,6 +64,7 @@ export type Reminder = BaseEntity & {
   dueAt: string;
   contactId: string | null;
   notificationStatus: 'pending' | 'delivered';
+  recurrence?: Recurrence | null;
 };
 
 export type CalendarEvent = BaseEntity & {

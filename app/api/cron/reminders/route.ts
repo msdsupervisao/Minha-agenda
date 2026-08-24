@@ -3,6 +3,7 @@ import { createServiceClient, serviceConfigured } from '@/lib/supabase/service';
 import { pushConfigured, sendPush } from '@/lib/push/send';
 import { reminderPushPayload } from '@/lib/push/pure';
 import { isCronAuthorized } from '@/lib/push/cron-auth';
+import { nextRecurringDue, recurrenceFromMeta } from '@/lib/assistant/recurrence';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -15,7 +16,7 @@ async function handle(request: Request) {
   const now = new Date().toISOString();
 
   const { data: due, error } = await client.from('reminders')
-    .select('id,user_id,title,due_at')
+    .select('id,user_id,title,due_at,metadata')
     .lte('due_at', now).is('notified_at', null).is('deleted_at', null)
     .order('due_at', { ascending: true }).limit(100);
   if (error) return NextResponse.json({ error: 'load' }, { status: 500 });
@@ -32,8 +33,16 @@ async function handle(request: Request) {
       if (result.ok) sent += 1;
       else { failed += 1; if (result.gone) await client.from('push_subscriptions').delete().eq('id', s.id as string); }
     }
-    // Marca como notificado mesmo sem inscrição ativa, para não reprocessar em loop.
-    await client.from('reminders').update({ notified_at: new Date().toISOString() }).eq('id', reminder.id);
+    // Recorrente: reagenda a próxima ocorrência e volta a ficar pendente.
+    // Único: marca notificado (mesmo sem inscrição) para não reprocessar em loop.
+    const recurrence = recurrenceFromMeta(reminder.metadata);
+    if (recurrence) {
+      await client.from('reminders')
+        .update({ due_at: nextRecurringDue(String(reminder.due_at), recurrence, new Date()), notified_at: null, notification_status: 'pending', updated_at: new Date().toISOString() })
+        .eq('id', reminder.id);
+    } else {
+      await client.from('reminders').update({ notified_at: new Date().toISOString() }).eq('id', reminder.id);
+    }
   }
 
   return NextResponse.json({ ok: true, checked: (due || []).length, sent, failed });

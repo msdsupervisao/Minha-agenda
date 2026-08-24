@@ -1,4 +1,5 @@
 import { extractAmount, contactNameFrom, parseDate, parseTime, combineDateTime, parseRelativeDateTime, stripRelativeDateTime } from './parsing';
+import { parseRecurrence, stripRecurrence, firstRecurringDue } from './recurrence';
 import { makeId, normalize, resolveRange, titleCase } from './memory';
 import { appTimezone } from '../data/time';
 import type { AssistantAction } from './types';
@@ -52,17 +53,24 @@ export function interpretCommand(input: string, now = new Date(), tz = appTimezo
 
   if (/^(?:me\s+)?lembr[ea](?:-me)?\b/.test(clean)) {
     const relative = parseRelativeDateTime(text, now);
+    const recurrence = parseRecurrence(text);
     const date = parseDate(text, now, tz);
     const time = parseTime(text);
-    let title = stripRelativeDateTime(text.replace(/^(?:me\s+)?lembr[ea](?:-me)?(?:\s+de)?\s*/i, ''))
+    let title = stripRecurrence(stripRelativeDateTime(text.replace(/^(?:me\s+)?lembr[ea](?:-me)?(?:\s+de)?\s*/i, '')))
       .replace(/(?:depois\s+de\s+amanhã|depois\s+de\s+amanha|amanhã|amanha|hoje|semana\s+que\s+vem|próxima\s+semana|proxima\s+semana|mês\s+que\s+vem|mes\s+que\s+vem|próximo\s+mês|proximo\s+mes)/gi, '')
       .replace(/\b(?:domingo|segunda(?:-feira)?|terça(?:-feira)?|terca(?:-feira)?|quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|sábado|sabado)\b/gi, '')
-      .replace(/(?:^|\s)(?:(?:às|as)\s+(?:\d{1,2}(?::\d{2})?|uma|duas|três|tres|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|catorze|quatorze|quinze|dezesseis|dezessete|dezoito|dezenove|vinte)|a\s+\d{1,2}(?::\d{2})?)(?=\s|$)/giu, ' ').trim().replace(/^de\s+/i, '').replace(/[.!?]+$/, '');
+      .replace(/(?:^|\s)(?:(?:às|as)\s+(?:\d{1,2}(?:[:h]\d{2}|h)?|uma|duas|três|tres|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|catorze|quatorze|quinze|dezesseis|dezessete|dezoito|dezenove|vinte)|a\s+\d{1,2}(?:[:h]\d{2}|h)?)(?=\s|$)/giu, ' ').trim().replace(/^de\s+/i, '').replace(/[,;.!?]+$/, '').trim();
     const contactName = contactNameFrom(title);
     if (/^(hoje|amanh[ãa])$/i.test(title)) title = '';
     const requiresMessageDetail = /^mandar\s+(?:uma\s+)?mensagem\s+(?:para|pro|pra)\s+[\p{L}'-]+\s*$/iu.test(title);
-    const dueAt = relative ? relative.toISOString() : (date ? combineDateTime(date, time, tz) : null);
-    return action('create_reminder', title || 'Lembrete', '', { title, dueAt, contactName, requiresMessageDetail });
+    const dueAt = relative
+      ? relative.toISOString()
+      : date
+        ? combineDateTime(date, time, tz)
+        : recurrence
+          ? firstRecurringDue(recurrence, text, now, tz)
+          : null;
+    return action('create_reminder', title || 'Lembrete', '', { title, dueAt, contactName, requiresMessageDetail, recurrence: recurrence ?? null });
   }
 
   if (/^(?:anota|anote)\b/.test(clean)) {
