@@ -1,4 +1,4 @@
-import { extractAmount, contactNameFrom, parseDate, parseTime, combineDateTime } from './parsing';
+import { extractAmount, contactNameFrom, parseDate, parseTime, combineDateTime, parseRelativeDateTime, stripRelativeDateTime } from './parsing';
 import { makeId, normalize, resolveRange, titleCase } from './memory';
 import { appTimezone } from '../data/time';
 import type { AssistantAction } from './types';
@@ -51,16 +51,18 @@ export function interpretCommand(input: string, now = new Date(), tz = appTimezo
   }
 
   if (/^(?:me\s+)?lembr[ea](?:-me)?\b/.test(clean)) {
+    const relative = parseRelativeDateTime(text, now);
     const date = parseDate(text, now, tz);
     const time = parseTime(text);
-    let title = text.replace(/^(?:me\s+)?lembr[ea](?:-me)?(?:\s+de)?\s*/i, '')
+    let title = stripRelativeDateTime(text.replace(/^(?:me\s+)?lembr[ea](?:-me)?(?:\s+de)?\s*/i, ''))
       .replace(/(?:depois\s+de\s+amanhã|depois\s+de\s+amanha|amanhã|amanha|hoje|semana\s+que\s+vem|próxima\s+semana|proxima\s+semana|mês\s+que\s+vem|mes\s+que\s+vem|próximo\s+mês|proximo\s+mes)/gi, '')
       .replace(/\b(?:domingo|segunda(?:-feira)?|terça(?:-feira)?|terca(?:-feira)?|quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|sábado|sabado)\b/gi, '')
       .replace(/(?:^|\s)(?:(?:às|as)\s+(?:\d{1,2}(?::\d{2})?|uma|duas|três|tres|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|catorze|quatorze|quinze|dezesseis|dezessete|dezoito|dezenove|vinte)|a\s+\d{1,2}(?::\d{2})?)(?=\s|$)/giu, ' ').trim().replace(/^de\s+/i, '').replace(/[.!?]+$/, '');
     const contactName = contactNameFrom(title);
     if (/^(hoje|amanh[ãa])$/i.test(title)) title = '';
     const requiresMessageDetail = /^mandar\s+(?:uma\s+)?mensagem\s+(?:para|pro|pra)\s+[\p{L}'-]+\s*$/iu.test(title);
-    return action('create_reminder', title || 'Lembrete', '', { title, dueAt: date ? combineDateTime(date, time, tz) : null, contactName, requiresMessageDetail });
+    const dueAt = relative ? relative.toISOString() : (date ? combineDateTime(date, time, tz) : null);
+    return action('create_reminder', title || 'Lembrete', '', { title, dueAt, contactName, requiresMessageDetail });
   }
 
   if (/^(?:anota|anote)\b/.test(clean)) {
@@ -69,15 +71,19 @@ export function interpretCommand(input: string, now = new Date(), tz = appTimezo
   }
 
   if (/^(?:crie\s+)?(?:uma\s+)?tarefa\b|^preciso\b/.test(clean)) {
-    const title = text.replace(/^(?:crie\s+)?(?:uma\s+)?tarefa(?:\s+para)?\s*|^preciso\s*/i, '').replace(/[.!?]+$/, '');
+    const title = stripRelativeDateTime(text.replace(/^(?:crie\s+)?(?:uma\s+)?tarefa(?:\s+para)?\s*|^preciso\s*/i, '')).replace(/[.!?]+$/, '');
+    const relative = parseRelativeDateTime(text, now);
     const date = parseDate(text, now, tz);
-    return action('create_task', title, '', { title, dueAt: date ? combineDateTime(date, parseTime(text), tz) : null, contactName: contactNameFrom(title) });
+    const dueAt = relative ? relative.toISOString() : (date ? combineDateTime(date, parseTime(text), tz) : null);
+    return action('create_task', title, '', { title, dueAt, contactName: contactNameFrom(title) });
   }
 
   if (/^(?:agende|marque|crie)\b/.test(clean)) {
-    const title = text.replace(/^(?:agende|marque|crie)(?:\s+um)?\s*(?:evento|compromisso)?\s*/i, '').replace(/[.!?]+$/, '');
+    const title = stripRelativeDateTime(text.replace(/^(?:agende|marque|crie)(?:\s+um)?\s*(?:evento|compromisso)?\s*/i, '')).replace(/[.!?]+$/, '');
+    const relative = parseRelativeDateTime(text, now);
     const date = parseDate(text, now, tz);
-    return action('create_event', title, '', { title, startsAt: date ? combineDateTime(date, parseTime(text), tz) : null, contactName: contactNameFrom(title) });
+    const startsAt = relative ? relative.toISOString() : (date ? combineDateTime(date, parseTime(text), tz) : null);
+    return action('create_event', title, '', { title, startsAt, contactName: contactNameFrom(title) });
   }
 
   if (/^procure|^busque|^lembra de/.test(clean)) return action('search_memory', 'Pesquisar memória', '', { query: text.replace(/^(procure|busque|lembra de)\s*/i, '') });

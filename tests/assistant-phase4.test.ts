@@ -8,7 +8,7 @@ import { interpretOnServer } from '../lib/assistant/ai-runtime';
 import { ConversationEngine } from '../lib/assistant/conversation-engine';
 import { interpretCommand } from '../lib/assistant/interpreter';
 import { OperationalMemoryRepository, type StorageLike } from '../lib/assistant/memory';
-import { parseDate, combineDateTime } from '../lib/assistant/parsing';
+import { parseDate, combineDateTime, parseRelativeDateTime } from '../lib/assistant/parsing';
 import type { ActionInterpreter, AssistantAction, InterpretationContext } from '../lib/assistant/types';
 
 class TestStorage implements StorageLike {
@@ -123,6 +123,24 @@ test('dia da semana à noite não pula uma semana (domingo continua o próximo d
   // 2026-08-23T02:00:00Z = 22:00 de sábado 22 em Cuiabá. "domingo" deve ser o dia 23.
   const ref = new Date('2026-08-23T02:00:00Z');
   assert.equal(parseDate('domingo', ref, tz)?.getUTCDate(), 23);
+});
+
+test('tempo relativo "daqui a N minutos/horas" e "em N min" resolve a partir de agora', () => {
+  const ref = new Date('2026-08-20T03:00:00Z');
+  assert.equal(parseRelativeDateTime('me lembra daqui a 2 minutos de tomar água', ref)?.toISOString(), '2026-08-20T03:02:00.000Z');
+  assert.equal(parseRelativeDateTime('me lembra daqui a dois minutos', ref)?.toISOString(), '2026-08-20T03:02:00.000Z');
+  assert.equal(parseRelativeDateTime('me lembra em 5 min', ref)?.toISOString(), '2026-08-20T03:05:00.000Z');
+  assert.equal(parseRelativeDateTime('me lembra daqui a uma hora', ref)?.toISOString(), '2026-08-20T04:00:00.000Z');
+  assert.equal(parseRelativeDateTime('me lembra em meia hora', ref)?.toISOString(), '2026-08-20T03:30:00.000Z');
+  assert.equal(parseRelativeDateTime('me lembra hoje de pagar a conta', ref), null); // sem expressão relativa
+});
+
+test('lembrete "daqui a dois minutos" não vira 02:00 e limpa o título', () => {
+  const ref = new Date('2026-08-20T03:00:00Z');
+  const rem = interpretCommand('me lembra daqui a dois minutos de tomar água', ref, 'America/Cuiaba')!;
+  assert.equal(rem.intent, 'create_reminder');
+  assert.equal(rem.data.dueAt, '2026-08-20T03:02:00.000Z');
+  assert.equal(rem.data.title, 'tomar água');
 });
 
 test('fallback local cobre as frases portuguesas novas', () => {

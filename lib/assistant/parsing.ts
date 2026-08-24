@@ -56,6 +56,28 @@ export function parseDate(text: string, reference = new Date(), tz = appTimezone
   return date;
 }
 
+// Tempo relativo a partir de agora: "daqui a 2 minutos", "em 5 min",
+// "daqui a uma hora", "em meia hora". Retorna o instante já resolvido.
+const RELATIVE_UNIT_MS: Record<string, number> = { segundo: 1000, minuto: 60_000, hora: 3_600_000, dia: 86_400_000, semana: 604_800_000 };
+const RELATIVE_RE = /\b(?:daqui\s+a|daqui|em|dentro\s+de)\s+(\d+|meia|um|uma|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|quatorze|catorze|quinze|vinte|trinta)\s*(segundos?|minutos?|min|horas?|h|dias?|semanas?)\b/u;
+
+export function parseRelativeDateTime(text: string, now = new Date()): Date | null {
+  const match = normalize(text).match(RELATIVE_RE);
+  if (!match) return null;
+  const unitKey = match[2].replace(/^min$/, 'minuto').replace(/^h$/, 'hora').replace(/s$/, '');
+  const ms = RELATIVE_UNIT_MS[unitKey];
+  if (!ms) return null;
+  const qty = match[1] === 'meia' ? 0.5 : parseNumber(match[1]);
+  if (qty == null || qty <= 0) return null;
+  return new Date(now.getTime() + qty * ms);
+}
+
+/** Remove a expressão de tempo relativo do título (texto original, tolerante a acento). */
+export function stripRelativeDateTime(text: string) {
+  return text.replace(/\b(?:daqui\s+a|daqui|em|dentro\s+de)\s+(?:\d+|meia|um|uma|dois|duas|tr[êe]s|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|(?:c|qu)atorze|quinze|vinte|trinta)\s*(?:segundos?|minutos?|min|horas?|h|dias?|semanas?)\b/giu, ' ')
+    .replace(/\s{2,}/g, ' ').trim();
+}
+
 export function parseTime(text: string) {
   const digits = normalize(text).match(/(?:as|a)\s+(\d{1,2})(?::|h)?(\d{2})?/i);
   if (digits) return { hour: Number(digits[1]), minute: Number(digits[2] || 0) };
