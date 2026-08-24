@@ -48,6 +48,7 @@
 .badgeLate { background: rgba(255, 120, 90, .18); color: #ff8f6b; }
 .badgeDone { background: rgba(60, 210, 130, .16); color: #43d787; }
 .badgePending { background: rgba(0, 163, 224, .16); color: var(--blue); }
+.badgeRepeat { background: rgba(120, 130, 255, .16); color: #9aa4ff; text-transform: none; }
 
 /* Edição inline */
 .edit { display: grid; gap: 12px; padding: 14px; border-top: 1px solid var(--line); background: rgba(0, 0, 0, .3); }

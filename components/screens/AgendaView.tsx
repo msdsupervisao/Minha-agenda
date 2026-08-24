@@ -10,6 +10,7 @@ import styles from './Screens.module.css';
 
 const ICON: Record<AgendaKind, string> = { reminder: '◷', task: '✓', event: '▦' };
 const KIND_LABEL: Record<AgendaKind, string> = { reminder: 'lembrete', task: 'tarefa', event: 'compromisso' };
+const RECURRENCE_LABEL = { daily: 'todo dia', weekly: 'toda semana', monthly: 'todo mês' } as const;
 
 export default function AgendaView({ groups, loadError, tz }: { groups: AgendaGroup[]; loadError?: boolean; tz?: string }) {
   const router = useRouter();
@@ -104,6 +105,7 @@ export default function AgendaView({ groups, loadError, tz }: { groups: AgendaGr
                       <span className={`${styles.itemTitle} ${item.done ? styles.done : ''}`}>{item.title}</span>
                       <div className={styles.itemMeta}>
                         {KIND_LABEL[item.kind]}{item.at ? ` · ${formatTime(item.at, tz)}` : ''}
+                        {item.recurrence && <span className={`${styles.badge} ${styles.badgeRepeat}`}>🔁 {RECURRENCE_LABEL[item.recurrence]}</span>}
                         {group.key === 'late' && <span className={`${styles.badge} ${styles.badgeLate}`}>atrasado</span>}
                         {item.done && <span className={`${styles.badge} ${styles.badgeDone}`}>concluído</span>}
                       </div>

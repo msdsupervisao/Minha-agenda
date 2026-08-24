@@ -1,4 +1,4 @@
-import type { CalendarEvent, Reminder, Task } from '@/lib/assistant/types';
+import type { CalendarEvent, Recurrence, Reminder, Task } from '@/lib/assistant/types';
 import { DISPLAY_TZ } from '@/lib/format';
 
 export type AgendaKind = 'reminder' | 'task' | 'event';
@@ -10,11 +10,12 @@ export type AgendaItem = {
   at: string | null;
   endsAt: string | null;
   done: boolean;
+  recurrence?: Recurrence | null;
 };
 
 export function buildAgendaItems(reminders: Reminder[], tasks: Task[], events: CalendarEvent[]): AgendaItem[] {
   const items: AgendaItem[] = [
-    ...reminders.map((r): AgendaItem => ({ id: r.id, kind: 'reminder', title: r.title, at: r.dueAt, endsAt: null, done: r.notificationStatus === 'delivered' })),
+    ...reminders.map((r): AgendaItem => ({ id: r.id, kind: 'reminder', title: r.title, at: r.dueAt, endsAt: null, done: r.notificationStatus === 'delivered', recurrence: r.recurrence ?? null })),
     ...tasks.map((t): AgendaItem => ({ id: t.id, kind: 'task', title: t.title, at: t.dueAt, endsAt: null, done: t.status === 'done' })),
     ...events.map((e): AgendaItem => ({ id: e.id, kind: 'event', title: e.title, at: e.startsAt, endsAt: e.endsAt, done: false })),
   ];
