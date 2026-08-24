@@ -1,16 +1,16 @@
-# Auditoria de segurança do stack atual
+# Auditoria de segurança e migração para Next.js 16
 
-Auditoria executada em 19 de agosto de 2026 com `npm audit --json`.
+Auditoria inicial executada em 19 de agosto de 2026 e resolvida em 24 de agosto de 2026.
 
 ## Estado
 
-- Next.js atual: `14.2.15`.
-- Resultado agregado: 3 dependências sinalizadas — 1 crítica e 2 altas.
-- Dependências agregadas: `next` (crítica), `postcss` (alta) e `nanoid` (alta).
-- Correção automática sugerida pelo npm para o conjunto completo: Next.js `16.3.1`, mudança major.
-- A aplicação não foi atualizada para Next.js 15/16 nesta fase.
+- Next.js atual: `16.3.2` (Active LTS na data da migração).
+- React e React DOM atuais: `19.2.8`.
+- ESLint CLI com configuração flat do Next.js 16.
+- `npm audit --omit=dev`: zero vulnerabilidades conhecidas.
+- `npm run lint`, `npm test` e `npm run build`: aprovados.
 
-## Advisories detectados
+## Advisories encontrados antes da migração
 
 ### nanoid
 
@@ -36,20 +36,18 @@ Auditoria executada em 19 de agosto de 2026 com `npm audit --json`.
 - `GHSA-h25m-26qc-wcjf` — desserialização insegura/DoS.
 - `GHSA-ggv3-7p47-pfv8` — request smuggling em rewrites.
 
-A maior parte dos advisories mais recentes exige pelo menos a linha `15.5.21`; a publicação de segurança do Next.js indica `15.5.21` como Maintenance LTS e `16.2.11` como Active LTS na correção de julho de 2026. O `npm audit` atual escolhe `16.3.1` como correção disponível para esta árvore.
+A atualização para `16.3.2` removeu da árvore todas as versões sinalizadas acima. A seção permanece como histórico da motivação da migração.
 
-## Possíveis breaking changes antes da aprovação
+## Mudanças aplicadas
 
-Uma migração 14 → 15/16 precisa avaliar:
+Na migração 14 → 16 foram tratados:
 
-- React 19 e tipos correspondentes;
-- `cookies`, `headers`, `draftMode`, `params` e `searchParams` assíncronos;
-- mudança do cache padrão de `fetch` no Next.js 15;
-- remoção completa dos acessos síncronos às APIs de request no Next.js 16;
-- Node.js 20.9 ou superior no Next.js 16;
-- mudanças de `next/image`, cache, prefetch e configuração;
-- remoção/depreciação do fluxo `next lint`.
+- React 19 e os tipos correspondentes;
+- `cookies()` e `searchParams` assíncronos;
+- convenção `middleware.ts` renomeada para `proxy.ts`;
+- configuração de imagens migrada de `domains` para `remotePatterns`;
+- `next lint` substituído por ESLint CLI com flat config;
+- JSX automático e tipos de rotas gerados pelo Next.js 16;
+- build padrão com Turbopack.
 
 Referências oficiais: [upgrade para Next.js 15](https://nextjs.org/docs/app/guides/upgrading/version-15), [upgrade para Next.js 16](https://nextjs.org/docs/app/guides/upgrading/version-16) e [política de suporte](https://nextjs.org/support-policy).
-
-Nenhum upgrade major deve ser iniciado sem aprovação explícita.

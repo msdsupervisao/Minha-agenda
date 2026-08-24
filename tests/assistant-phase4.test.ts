@@ -3,13 +3,13 @@ import test from 'node:test';
 import { AiStructuredInterpretationSchema, actionFromStructured, structuredFromAction, validateStructuredInterpretation, type AiStructuredInterpretation } from '../lib/assistant/ai-schema';
 import { getAiRuntimeConfig } from '../lib/assistant/ai-config';
 import { readAiObservations } from '../lib/assistant/ai-observability';
-import { AiProviderError, OpenAIIntentProvider, type IntentProvider } from '../lib/assistant/ai-provider';
+import { AiProviderError, OpenAIIntentProvider } from '../lib/assistant/ai-provider';
 import { interpretOnServer } from '../lib/assistant/ai-runtime';
 import { ConversationEngine } from '../lib/assistant/conversation-engine';
 import { interpretCommand } from '../lib/assistant/interpreter';
 import { OperationalMemoryRepository, type StorageLike } from '../lib/assistant/memory';
 import { parseDate, combineDateTime, parseRelativeDateTime } from '../lib/assistant/parsing';
-import type { ActionInterpreter, AssistantAction, InterpretationContext } from '../lib/assistant/types';
+import type { ActionInterpreter, InterpretationContext } from '../lib/assistant/types';
 
 class TestStorage implements StorageLike {
   private values = new Map<string, string>();

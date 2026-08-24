@@ -1,7 +1,29 @@
-// Utilidades de tempo/fuso puras (sem dependência de servidor) — testáveis isoladamente.
+// Utilidades de tempo/fuso puras e seguras para código server/client.
 
+/** Fuso padrão quando não há um fuso explícito da requisição ou do navegador. */
 export function appTimezone() {
   return process.env.APP_TIMEZONE || 'America/Cuiaba';
+}
+
+/** Fuso do navegador quando disponível; mantém um fallback determinístico no servidor. */
+export function browserTimezone(fallback = appTimezone()) {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** true se o identificador IANA (ex.: "America/Sao_Paulo") for válido. */
+export function isValidTimeZone(tz: string) {
+  if (!tz) return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Deslocamento (ms) do fuso informado em relação ao UTC para o instante dado. */
@@ -55,9 +77,9 @@ export function normalizeExpenseFilter(value: string | undefined): ExpenseFilter
   return value === 'today' || value === '7d' || value === 'month' || value === 'all' ? value : '7d';
 }
 
-export function expenseRangeStart(filter: ExpenseFilter, now = new Date()): Date | null {
-  if (filter === 'today') return zonedStartOfDay(now);
-  if (filter === '7d') return new Date(zonedStartOfDay(now).getTime() - 6 * 24 * 60 * 60 * 1000);
-  if (filter === 'month') return zonedStartOfMonth(now);
+export function expenseRangeStart(filter: ExpenseFilter, now = new Date(), tz = appTimezone()): Date | null {
+  if (filter === 'today') return zonedStartOfDay(now, tz);
+  if (filter === '7d') return new Date(zonedStartOfDay(now, tz).getTime() - 6 * 24 * 60 * 60 * 1000);
+  if (filter === 'month') return zonedStartOfMonth(now, tz);
   return null;
 }

@@ -1,4 +1,5 @@
 import type { ActionLog, ActivityItem, Contact, ConversationTurn, EntityType, Intent, OperationalMemory, Source } from './types';
+import { appTimezone, tzOffsetMs, wallTimeToUtcIso } from '../data/time';
 
 export type StorageLike = Pick<Storage, 'getItem' | 'setItem'>;
 
@@ -158,34 +159,44 @@ export function titleCase(value: string) {
   return value.trim().replace(/(^|[\s-])(\p{L})/gu, (_, prefix: string, letter: string) => `${prefix}${letter.toLocaleUpperCase('pt-BR')}`);
 }
 
-export function rangeBounds(range: 'today' | 'tomorrow' | 'week' | 'next_week' | 'month' | 'next_month' | 'all', reference = new Date()) {
-  const start = new Date(reference);
-  const end = new Date(reference);
+export function rangeBounds(
+  range: 'today' | 'tomorrow' | 'week' | 'next_week' | 'month' | 'next_month' | 'all',
+  reference = new Date(),
+  timezone = appTimezone(),
+) {
   if (range === 'all') return { start: new Date(0), end: new Date(8640000000000000) };
-  start.setHours(0, 0, 0, 0);
-  end.setHours(23, 59, 59, 999);
-  if (range === 'tomorrow') { start.setDate(start.getDate() + 1); end.setDate(end.getDate() + 1); }
+
+  // `wall` usa campos UTC para representar o calendário local do usuário.
+  const wall = new Date(reference.getTime() + tzOffsetMs(reference, timezone));
+  wall.setUTCHours(0, 0, 0, 0);
+  let days = 1;
+  if (range === 'tomorrow') wall.setUTCDate(wall.getUTCDate() + 1);
   if (range === 'week') {
-    const day = start.getDay();
-    start.setDate(start.getDate() - day);
-    end.setDate(start.getDate() + 6);
+    wall.setUTCDate(wall.getUTCDate() - wall.getUTCDay());
+    days = 7;
   }
   if (range === 'next_week') {
-    const day = start.getDay();
-    start.setDate(start.getDate() - day + 7);
-    end.setTime(start.getTime());
-    end.setDate(start.getDate() + 6);
-    end.setHours(23, 59, 59, 999);
+    wall.setUTCDate(wall.getUTCDate() - wall.getUTCDay() + 7);
+    days = 7;
   }
-  if (range === 'month') {
-    start.setDate(1);
-    end.setMonth(start.getMonth() + 1, 0);
+  if (range === 'month') wall.setUTCDate(1);
+  if (range === 'next_month') wall.setUTCMonth(wall.getUTCMonth() + 1, 1);
+
+  const endWall = new Date(wall);
+  if (range === 'month' || range === 'next_month') {
+    endWall.setUTCMonth(endWall.getUTCMonth() + 1, 1);
+  } else {
+    endWall.setUTCDate(endWall.getUTCDate() + days);
   }
-  if (range === 'next_month') {
-    start.setMonth(start.getMonth() + 1, 1);
-    end.setMonth(start.getMonth() + 1, 0);
-  }
-  return { start, end };
+  const start = wallDateToInstant(wall, timezone);
+  const endExclusive = wallDateToInstant(endWall, timezone);
+  return { start, end: new Date(endExclusive.getTime() - 1) };
+}
+
+function wallDateToInstant(date: Date, timezone: string) {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  const wall = `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}T00:00`;
+  return new Date(wallTimeToUtcIso(wall, timezone));
 }
 
 export function resolveRange(text: string): 'today' | 'tomorrow' | 'week' | 'next_week' | 'month' | 'next_month' | 'all' {

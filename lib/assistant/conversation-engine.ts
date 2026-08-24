@@ -6,13 +6,23 @@ import { combineDateTime, parseDate, parseTime } from './parsing';
 import { MockWhatsAppService, type WhatsAppService } from './whatsapp-service';
 import { LocalActionInterpreter } from './local-action-interpreter';
 import { extractAmount } from './parsing';
+import { appTimezone } from '../data/time';
 import type { ActionInterpreter, AiProviderName, AssistantAction, EngineResult, PendingQuestion, Source } from './types';
 
 export class ConversationEngine {
   private whatsapp: WhatsAppService;
+  private interpreter: ActionInterpreter;
+  private timezone: string;
   private currentProvider: AiProviderName | undefined;
   private providerNotice: string | undefined;
-  constructor(private repository = new OperationalMemoryRepository(), whatsapp?: WhatsAppService, private interpreter: ActionInterpreter = new LocalActionInterpreter()) {
+  constructor(
+    private repository = new OperationalMemoryRepository(),
+    whatsapp?: WhatsAppService,
+    interpreter?: ActionInterpreter,
+    timezone = appTimezone(),
+  ) {
+    this.timezone = timezone;
+    this.interpreter = interpreter || new LocalActionInterpreter(timezone);
     this.whatsapp = whatsapp || new MockWhatsAppService(repository);
   }
 
@@ -128,7 +138,7 @@ export class ConversationEngine {
     }
 
     if (needsContact(action)) {
-      const contactResult = await this.resolveContact(action, source);
+      const contactResult = await this.resolveContact(action);
       if (contactResult) return contactResult;
     }
 
@@ -149,7 +159,7 @@ export class ConversationEngine {
     return this.route(prepare, source);
   }
 
-  private async resolveContact(action: AssistantAction, source: Source): Promise<EngineResult | null> {
+  private async resolveContact(action: AssistantAction): Promise<EngineResult | null> {
     const name = stringOrNull(action.data.contactName) || stringOrNull(action.data.recipientName);
     if (!name || action.data.contactId) return null;
     const contacts = await this.whatsapp.locateContact(name);
@@ -208,10 +218,10 @@ export class ConversationEngine {
     }
 
     if (pending.kind === 'reminder_date' || pending.kind === 'event_date') {
-      const date = parseDate(input);
+      const date = parseDate(input, new Date(), this.timezone);
       if (!date) return this.say('question', 'Não consegui identificar a data. Pode dizer “hoje” ou “amanhã”?', null);
       this.setPending(null);
-      const dateTime = combineDateTime(date, parseTime(input));
+      const dateTime = combineDateTime(date, parseTime(input), this.timezone);
       const intent = pending.kind === 'reminder_date' ? 'create_reminder' : 'create_event';
       const data: AssistantAction['data'] = pending.kind === 'reminder_date'
         ? { title: pending.title, dueAt: dateTime, contactName: pending.contactName }
@@ -254,7 +264,7 @@ export class ConversationEngine {
 
   private async run(action: AssistantAction, source: Source) {
     try {
-      const executed = await executeAction(action, source, this.repository, this.whatsapp);
+      const executed = await executeAction(action, source, this.repository, this.whatsapp, this.timezone);
       return this.say(isReadIntent(action.intent) ? 'query' : 'executed', executed.reply, action);
     } catch (error) {
       return this.say('error', error instanceof Error ? error.message : 'Não consegui executar essa ação.', action);

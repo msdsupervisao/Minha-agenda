@@ -15,6 +15,7 @@ type Props = {
   filter: string;
   category: string | null;
   loadError?: boolean;
+  tz?: string;
 };
 
 const FILTERS = [
@@ -24,7 +25,7 @@ const FILTERS = [
   { key: 'all', label: 'Tudo' },
 ];
 
-export default function FinancasView({ expenses, total, categories, filter, category, loadError }: Props) {
+export default function FinancasView({ expenses, total, categories, filter, category, loadError, tz }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -45,7 +46,7 @@ export default function FinancasView({ expenses, total, categories, filter, cate
   function startEdit(expense: Expense) {
     setError(null);
     setEditingId(expense.id);
-    setForm({ amount: String(expense.amount), category: expense.category, occurredAt: toDatetimeLocal(expense.occurredAt) });
+    setForm({ amount: String(expense.amount), category: expense.category, occurredAt: toDatetimeLocal(expense.occurredAt, tz) });
   }
 
   function save(id: string) {
@@ -125,7 +126,7 @@ export default function FinancasView({ expenses, total, categories, filter, cate
                 <span className={styles.itemIcon}>R$</span>
                 <div className={styles.itemMain}>
                   <span className={styles.itemTitle}>{expense.category}</span>
-                  <div className={styles.itemMeta}>{formatDateTime(expense.occurredAt)} · {expense.source === 'voice' ? 'voz' : 'texto'}</div>
+                  <div className={styles.itemMeta}>{formatDateTime(expense.occurredAt, tz)} · {expense.source === 'voice' ? 'voz' : 'texto'}</div>
                 </div>
                 <span className={styles.amount}>{formatBRL(expense.amount)}</span>
                 <div className={styles.itemActions}>

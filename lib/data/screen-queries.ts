@@ -16,7 +16,7 @@ export type ScreenContext = { client: SupabaseClient; userId: string; email: str
 export async function getScreenContext(): Promise<ScreenContext | null> {
   const user = await getAuthenticatedUser();
   if (!user) return null;
-  return { client: createClient(), userId: user.id, email: user.email ?? null };
+  return { client: await createClient(), userId: user.id, email: user.email ?? null };
 }
 
 // Reexporta utilidades de tempo/filtro para páginas e server actions.
@@ -31,11 +31,12 @@ export async function listExpenses(
   ctx: ScreenContext,
   filter: ExpenseFilter = '7d',
   category: string | null = null,
+  tz?: string,
 ): Promise<Expense[]> {
   let query = ctx.client.from('expenses').select('*')
     .eq('user_id', ctx.userId).is('deleted_at', null)
     .order('occurred_at', { ascending: false }).limit(300);
-  const start = expenseRangeStart(filter);
+  const start = expenseRangeStart(filter, new Date(), tz ?? appTimezone());
   if (start) query = query.gte('occurred_at', start.toISOString());
   if (category) query = query.eq('category', category);
   const { data, error } = await query;

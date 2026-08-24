@@ -5,12 +5,14 @@ import { ConversationEngine } from './conversation-engine';
 import { volatileMemoryRepository } from './memory';
 import type { ActionInterpreter, Source } from './types';
 import { SupabaseMemoryRepository } from '@/lib/data/supabase-memory-repository';
+import { appTimezone } from '@/lib/data/time';
 
 export async function runPersistentConversation(
   client: SupabaseClient,
   userId: string,
   text: string,
   source: Source,
+  timezone = appTimezone(),
 ) {
   const persistent = new SupabaseMemoryRepository(client, userId);
   const before = await persistent.load();
@@ -21,13 +23,13 @@ export async function runPersistentConversation(
       aiResult = await interpretOnServer({
         text: input,
         now: new Date(),
-        timezone: process.env.APP_TIMEZONE || 'America/Cuiaba',
+        timezone,
         context,
       }, { config: getAiRuntimeConfig() });
       return aiResult;
     },
   };
-  const engine = new ConversationEngine(local, undefined, interpreter);
+  const engine = new ConversationEngine(local, undefined, interpreter, timezone);
   const result = await engine.process(text, source);
   const after = local.read();
   await persistent.persist(before, after);

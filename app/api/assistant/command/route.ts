@@ -4,6 +4,7 @@ import { runPersistentConversation } from '@/lib/assistant/server-conversation';
 import { getSupabasePublicConfig } from '@/lib/supabase/config';
 import { getAuthenticatedUser } from '@/lib/supabase/auth';
 import { createClient } from '@/lib/supabase/server';
+import { resolveTimezone } from '@/lib/data/server-timezone';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,7 +25,9 @@ export async function POST(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: 'Comando inválido.' }, { status: 400 });
 
   try {
-    const result = await runPersistentConversation(createClient(), user.id, parsed.data.text, parsed.data.source);
+    const client = await createClient();
+    const timezone = await resolveTimezone();
+    const result = await runPersistentConversation(client, user.id, parsed.data.text, parsed.data.source, timezone);
     return NextResponse.json(result, { headers: { 'cache-control': 'no-store' } });
   } catch (error) {
     console.error('[minha-agenda:data]', JSON.stringify({ timestamp: new Date().toISOString(), operation: 'command', result: 'error', error: error instanceof Error ? error.message : 'unknown' }));

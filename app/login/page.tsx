@@ -10,10 +10,15 @@ const messages: Record<string, string> = {
   not_configured: 'O projeto Supabase ainda não foi configurado.',
 };
 
-export default async function LoginPage({ searchParams }: { searchParams?: { error?: string } }) {
+type LoginPageProps = {
+  searchParams?: Promise<{ error?: string }>;
+};
+
+export default async function LoginPage({ searchParams }: LoginPageProps) {
   const configured = getSupabasePublicConfig().configured;
   if (configured && await getAuthenticatedUser()) redirect('/');
-  const error = searchParams?.error ? messages[searchParams.error] : null;
+  const query = await searchParams;
+  const error = query?.error ? messages[query.error] : null;
 
   return <main className={styles.shell}>
     <section className={styles.card}>

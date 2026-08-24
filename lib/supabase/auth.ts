@@ -4,7 +4,7 @@ import { AuthService, type AuthUser } from '@/lib/auth/auth-service';
 export type AuthenticatedUser = AuthUser;
 
 export async function getAuthenticatedUser(): Promise<AuthenticatedUser | null> {
-  const supabase = createClient();
+  const supabase = await createClient();
   return new AuthService(supabase.auth).currentUser();
 }
 

@@ -3,6 +3,7 @@ import test from 'node:test';
 import { ConversationEngine } from '../lib/assistant/conversation-engine';
 import { OperationalMemoryRepository, type StorageLike } from '../lib/assistant/memory';
 import { extractAmount } from '../lib/assistant/parsing';
+import type { ActionInterpreter, AssistantAction } from '../lib/assistant/types';
 
 class TestStorage implements StorageLike {
   private values = new Map<string, string>();
@@ -14,6 +15,22 @@ function setup() {
   const repository = new OperationalMemoryRepository(new TestStorage());
   return { repository, engine: new ConversationEngine(repository) };
 }
+
+function reminderInterpreter(dueAt: string): ActionInterpreter {
+  const action: AssistantAction = {
+    id: 'timezone-reminder', intent: 'create_reminder', title: 'teste de fuso', summary: '', requiresConfirmation: false,
+    data: { title: 'teste de fuso', dueAt },
+  };
+  return { async interpret() { return { action, provider: 'local', notice: 'Modo local ativo.' }; } };
+}
+
+test('resposta de lembrete usa o fuso explícito do dispositivo', async () => {
+  const dueAt = '2026-08-21T12:00:00.000Z';
+  const saoPaulo = new ConversationEngine(new OperationalMemoryRepository(new TestStorage()), undefined, reminderInterpreter(dueAt), 'America/Sao_Paulo');
+  const cuiaba = new ConversationEngine(new OperationalMemoryRepository(new TestStorage()), undefined, reminderInterpreter(dueAt), 'America/Cuiaba');
+  assert.match((await saoPaulo.process('crie o lembrete', 'text')).reply, /09:00/);
+  assert.match((await cuiaba.process('crie o lembrete', 'text')).reply, /08:00/);
+});
 
 test('registra e consulta um gasto real da memória', async () => {
   const { engine, repository } = setup();

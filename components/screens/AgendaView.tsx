@@ -11,7 +11,7 @@ import styles from './Screens.module.css';
 const ICON: Record<AgendaKind, string> = { reminder: '◷', task: '✓', event: '▦' };
 const KIND_LABEL: Record<AgendaKind, string> = { reminder: 'lembrete', task: 'tarefa', event: 'compromisso' };
 
-export default function AgendaView({ groups, loadError }: { groups: AgendaGroup[]; loadError?: boolean }) {
+export default function AgendaView({ groups, loadError, tz }: { groups: AgendaGroup[]; loadError?: boolean; tz?: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -22,7 +22,7 @@ export default function AgendaView({ groups, loadError }: { groups: AgendaGroup[
   function startEdit(item: AgendaItem) {
     setError(null);
     setEditingId(item.id);
-    setForm({ title: item.title, at: item.at ? toDatetimeLocal(item.at) : '', endsAt: item.endsAt ? toDatetimeLocal(item.endsAt) : '' });
+    setForm({ title: item.title, at: item.at ? toDatetimeLocal(item.at, tz) : '', endsAt: item.endsAt ? toDatetimeLocal(item.endsAt, tz) : '' });
   }
 
   function save(item: AgendaItem) {
@@ -103,7 +103,7 @@ export default function AgendaView({ groups, loadError }: { groups: AgendaGroup[
                     <div className={styles.itemMain}>
                       <span className={`${styles.itemTitle} ${item.done ? styles.done : ''}`}>{item.title}</span>
                       <div className={styles.itemMeta}>
-                        {KIND_LABEL[item.kind]}{item.at ? ` · ${formatTime(item.at)}` : ''}
+                        {KIND_LABEL[item.kind]}{item.at ? ` · ${formatTime(item.at, tz)}` : ''}
                         {group.key === 'late' && <span className={`${styles.badge} ${styles.badgeLate}`}>atrasado</span>}
                         {item.done && <span className={`${styles.badge} ${styles.badgeDone}`}>concluído</span>}
                       </div>

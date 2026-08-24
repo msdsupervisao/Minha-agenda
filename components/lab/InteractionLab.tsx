@@ -258,7 +258,6 @@ function PriorityReorder() {
 function IntentSlider({ onDone }: { onDone: (label: string) => void }) {
   const x = useMotionValue(0);
   const [choice, setChoice] = useState('agora');
-  const choices = ['soltar', 'depois', 'agora'];
   function settle(offset: number) {
     const next = offset < -65 ? 'soltar' : offset < 45 ? 'depois' : 'agora';
     setChoice(next);

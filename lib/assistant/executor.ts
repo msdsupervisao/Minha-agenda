@@ -1,5 +1,6 @@
 import { OperationalMemoryRepository, makeId, normalize, rangeBounds } from './memory';
 import { MockWhatsAppService, type WhatsAppService } from './whatsapp-service';
+import { appTimezone } from '../data/time';
 import type { AssistantAction, CalendarEvent, Expense, Note, Reminder, Source, Task } from './types';
 
 export type ExecutionResult = { reply: string; entityId: string | null };
@@ -9,6 +10,7 @@ export async function executeAction(
   source: Source,
   repository = new OperationalMemoryRepository(),
   whatsapp: WhatsAppService = new MockWhatsAppService(repository),
+  timezone = appTimezone(),
 ): Promise<ExecutionResult> {
   const memory = repository.read();
   const now = new Date().toISOString();
@@ -24,7 +26,7 @@ export async function executeAction(
     const reminder: Reminder = { id: makeId(), userId: memory.userId, createdAt: now, updatedAt: now, title: String(action.data.title), dueAt: String(action.data.dueAt), contactId: stringOrNull(action.data.contactId), notificationStatus: 'pending' };
     repository.update((state) => state.reminders.unshift(reminder));
     repository.log({ intent: action.intent, entityType: 'reminder', entityId: reminder.id, summary: reminder.title, source, reversible: true, before: null, after: reminder });
-    return { reply: `Pronto. Vou te lembrar ${friendlyDate(reminder.dueAt)} de ${lowerFirst(reminder.title)}.`, entityId: reminder.id };
+    return { reply: `Pronto. Vou te lembrar ${friendlyDate(reminder.dueAt, timezone)} de ${lowerFirst(reminder.title)}.`, entityId: reminder.id };
   }
 
   if (action.intent === 'create_note') {
@@ -45,13 +47,13 @@ export async function executeAction(
     const event: CalendarEvent = { id: makeId(), userId: memory.userId, createdAt: now, updatedAt: now, title: String(action.data.title), startsAt: String(action.data.startsAt), endsAt: null, contactId: stringOrNull(action.data.contactId) };
     repository.update((state) => state.events.unshift(event));
     repository.log({ intent: action.intent, entityType: 'event', entityId: event.id, summary: event.title, source, reversible: true, before: null, after: event });
-    return { reply: `Agendei ${event.title} para ${friendlyDate(event.startsAt)}.`, entityId: event.id };
+    return { reply: `Agendei ${event.title} para ${friendlyDate(event.startsAt, timezone)}.`, entityId: event.id };
   }
 
   if (action.intent === 'read_expenses') {
     const range = String(action.data.range || 'all') as import('./types').DateRange;
     const category = stringOrNull(action.data.category);
-    const bounds = rangeBounds(range);
+    const bounds = rangeBounds(range, new Date(), timezone);
     const expenses = memory.expenses.filter((expense) => inRange(expense.occurredAt, bounds) && (!category || normalize(expense.category).includes(normalize(category))));
     const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
     if (!expenses.length) return { reply: `Não encontrei gastos${category ? ` com ${category}` : ''} nesse período.`, entityId: null };
@@ -61,14 +63,14 @@ export async function executeAction(
   if (action.intent === 'read_tasks') {
     const overdue = action.data.status === 'overdue';
     const range = String(action.data.range || 'all') as import('./types').DateRange;
-    const bounds = rangeBounds(range);
+    const bounds = rangeBounds(range, new Date(), timezone);
     const tasks = memory.tasks.filter((task) => task.status === 'open' && (!overdue || Boolean(task.dueAt && new Date(task.dueAt) < new Date())) && (overdue || range === 'all' || Boolean(task.dueAt && inRange(task.dueAt, bounds))));
     return { reply: tasks.length ? `${overdue ? 'Tarefas atrasadas' : 'Tarefas abertas'}: ${tasks.map((task) => task.title).join('; ')}.` : `Você não tem tarefas ${overdue ? 'atrasadas' : 'abertas'}.`, entityId: null };
   }
 
   if (action.intent === 'read_reminders') {
     const range = String(action.data.range || 'all') as import('./types').DateRange;
-    const bounds = rangeBounds(range);
+    const bounds = rangeBounds(range, new Date(), timezone);
     const reminders = memory.reminders.filter((reminder) => inRange(reminder.dueAt, bounds));
     return { reply: reminders.length ? `Seus lembretes ${rangeLabel(range)}: ${reminders.map((item) => item.title).join('; ')}.` : `Você não tem lembretes ${rangeLabel(range)}.`, entityId: null };
   }
@@ -77,9 +79,9 @@ export async function executeAction(
     const range = String(action.data.range || 'all') as import('./types').DateRange;
     if (action.data.next) {
       const next = [...memory.events].filter((event) => new Date(event.startsAt) >= new Date()).sort((a, b) => a.startsAt.localeCompare(b.startsAt))[0];
-      return { reply: next ? `Seu próximo compromisso é ${next.title}, ${friendlyDate(next.startsAt)}.` : 'Você não tem próximos compromissos.', entityId: next?.id || null };
+      return { reply: next ? `Seu próximo compromisso é ${next.title}, ${friendlyDate(next.startsAt, timezone)}.` : 'Você não tem próximos compromissos.', entityId: next?.id || null };
     }
-    const bounds = rangeBounds(range);
+    const bounds = rangeBounds(range, new Date(), timezone);
     const items = [
       ...memory.events.filter((item) => inRange(item.startsAt, bounds)).map((item) => item.title),
       ...memory.reminders.filter((item) => inRange(item.dueAt, bounds)).map((item) => `lembrete: ${item.title}`),
@@ -145,6 +147,12 @@ function stringOrNull(value: unknown) { return typeof value === 'string' && valu
 function money(value: number) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value); }
 function inRange(value: string, bounds: { start: Date; end: Date }) { const date = new Date(value); return date >= bounds.start && date <= bounds.end; }
 function rangeLabel(range: string) { return ({ today: 'hoje', tomorrow: 'amanhã', week: 'nesta semana', next_week: 'na semana que vem', month: 'neste mês', next_month: 'no mês que vem', all: 'no total' } as Record<string, string>)[range] || 'no período'; }
-function friendlyDate(value: string) { return new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', hour: new Date(value).getHours() ? '2-digit' : undefined, minute: new Date(value).getHours() ? '2-digit' : undefined }).format(new Date(value)); }
+function friendlyDate(value: string, tz: string) {
+  const date = new Date(value);
+  const wall = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour12: false, hour: '2-digit', minute: '2-digit' })
+    .formatToParts(date).reduce<Record<string, string>>((acc, part) => { if (part.type !== 'literal') acc[part.type] = part.value; return acc; }, {});
+  const hasTime = !(wall.hour === '00' && wall.minute === '00');
+  return new Intl.DateTimeFormat('pt-BR', { timeZone: tz, weekday: 'long', day: 'numeric', month: 'long', hour: hasTime ? '2-digit' : undefined, minute: hasTime ? '2-digit' : undefined }).format(date);
+}
 function lowerFirst(value: string) { return value.charAt(0).toLocaleLowerCase('pt-BR') + value.slice(1); }
 function describeContact(contact: { name: string; role: string | null; className: string | null }) { return `${contact.name}${contact.role ? `, ${contact.role}` : ''}${contact.className ? ` de ${contact.className}` : ''}`; }

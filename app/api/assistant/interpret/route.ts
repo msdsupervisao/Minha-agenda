@@ -5,6 +5,7 @@ import { getAiRuntimeConfig } from '@/lib/assistant/ai-config';
 import { interpretOnServer } from '@/lib/assistant/ai-runtime';
 import { getSupabasePublicConfig } from '@/lib/supabase/config';
 import { getAuthenticatedUser } from '@/lib/supabase/auth';
+import { resolveTimezone } from '@/lib/data/server-timezone';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,10 +28,11 @@ export async function POST(request: Request) {
 
   const config = getAiRuntimeConfig();
   try {
+    const timezone = await resolveTimezone();
     const result = await interpretOnServer({
       text: parsed.data.text,
       now: new Date(),
-      timezone: process.env.APP_TIMEZONE || 'America/Cuiaba',
+      timezone,
       context: { turns: parsed.data.context, source: parsed.data.source },
     }, { config });
     return NextResponse.json(result, { headers: { 'cache-control': 'no-store' } });

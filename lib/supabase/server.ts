@@ -2,8 +2,8 @@ import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { requireSupabasePublicConfig } from './config';
 
-export function createClient() {
-  const cookieStore = cookies();
+export async function createClient() {
+  const cookieStore = await cookies();
   const config = requireSupabasePublicConfig();
   return createServerClient(config.url, config.publishableKey, {
     cookies: {

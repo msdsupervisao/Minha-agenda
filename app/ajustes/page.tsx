@@ -4,6 +4,7 @@ import PushToggle from '@/components/PushToggle';
 import screens from '@/components/screens/Screens.module.css';
 import { getSupabasePublicConfig } from '@/lib/supabase/config';
 import { getScreenContext } from '@/lib/data/screen-queries';
+import { resolveTimezone } from '@/lib/data/server-timezone';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +13,7 @@ export default async function AjustesPage() {
   const ctx = await getScreenContext();
   if (!ctx) redirect('/login');
 
-  const timezone = process.env.APP_TIMEZONE || 'America/Cuiaba';
+  const timezone = await resolveTimezone();
   const aiMode = (process.env.AI_PROVIDER === 'local' || !process.env.OPENAI_API_KEY) ? 'Local (regras)' : 'OpenAI';
 
   const rows: Array<{ label: string; value: string }> = [

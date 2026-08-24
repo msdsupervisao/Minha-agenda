@@ -15,7 +15,7 @@ export async function login(formData: FormData) {
   if (!getSupabasePublicConfig().configured) redirect('/login?error=not_configured');
   const parsed = LoginSchema.safeParse({ email: formData.get('email'), password: formData.get('password') });
   if (!parsed.success) redirect('/login?error=invalid_fields');
-  const supabase = createClient();
+  const supabase = await createClient();
   try { await new AuthService(supabase.auth).login(parsed.data.email, parsed.data.password); }
   catch { redirect('/login?error=invalid_credentials'); }
   redirect('/');

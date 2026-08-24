@@ -2,7 +2,7 @@
 
 Assistente pessoal mobile-first: um único núcleo de voz recebe comandos naturais, interpreta uma ação e mostra o resultado sem transformar o fluxo em formulários.
 
-## Fase 5 — memória persistente com Supabase
+## Estado atual
 
 - controle central de voz com Web Speech API e fallback de texto;
 - estados visuais: pronto, ouvindo, processando, executando, concluído, confirmação e erro;
@@ -12,25 +12,32 @@ Assistente pessoal mobile-first: um único núcleo de voz recebe comandos natura
 - memória de contatos, contexto recente, resolução de homônimos e perguntas de continuação;
 - confirmação obrigatória antes de enviar mensagens;
 - histórico de ações, correção do último gasto e suporte a “desfaz isso”;
-- ações persistidas em memória local versionada enquanto o Supabase remoto não está configurado;
-- contrato `WhatsAppService` em modo mock: não envia nenhuma mensagem real.
+- persistência Supabase com autenticação SSR, RLS por usuário e fallback local de desenvolvimento;
+- telas Hoje, Agenda, Finanças e Ajustes, além do CRUD de Turmas;
+- PWA instalável com service worker, manifesto e ícones;
+- notificações Web Push/VAPID de lembretes e teste manual pelo aparelho;
+- fuso horário sincronizado com o dispositivo para interpretar, gravar, consultar e exibir datas;
+- contrato `WhatsAppService` em modo mock: não envia nenhuma mensagem real;
 - Responses API com Structured Outputs rígido, provider configurável e validação no backend;
 - fallback local explícito quando não há chave, exibido na interface;
-- observabilidade segura de intent, latência, tokens, resultado e custo estimado.
+- observabilidade segura de intent, latência, tokens, resultado e custo estimado;
 - autenticação mínima por e-mail e senha com sessão SSR persistente;
 - caminho principal `UI → API → service → repository → Supabase` quando configurado;
 - migrations versionadas, RLS por usuário e action logs persistentes;
 - contexto curto persistido, sem memória infinita;
-- modo local mantido somente como fallback de desenvolvimento.
+- modo local mantido somente como fallback de desenvolvimento;
+- Next.js 16 Active LTS, React 19 e auditoria de dependências sem vulnerabilidades conhecidas.
 
-Consulte [a implementação da Fase 5](docs/fase-5-supabase-persistencia.md), [a arquitetura da Fase 4](docs/fase-4-cerebro-openai.md), a [auditoria do Next.js 14](docs/nextjs-14-auditoria-seguranca.md) e a [migration Supabase](supabase/migrations/20260819000100_phase5_persistent_memory.sql).
+Consulte a [persistência da Fase 5](docs/fase-5-supabase-persistencia.md), as [telas e turmas da Fase 6](docs/fase-6-telas-e-turmas.md), o [push da Fase 7](docs/fase-7-push.md), a [arquitetura de IA](docs/fase-4-cerebro-openai.md) e a [migração para Next.js 16](docs/nextjs-14-auditoria-seguranca.md).
 
 ## Desenvolvimento
 
 ```bash
 npm install
 npm run dev
+npm run lint
 npm test
+npm run build
 ```
 
 Abra `http://localhost:3000`.
@@ -41,6 +48,11 @@ Sem configuração Supabase, o aplicativo permanece em modo local para desenvolv
 
 Copie `.env.example` para `.env.local` e defina `AI_PROVIDER=openai` e `OPENAI_API_KEY`. Sem chave, a aplicação continua funcional em modo local e informa isso na tela. Segredos nunca devem usar o prefixo `NEXT_PUBLIC_`.
 
-Com uma chave válida, execute `npm run test:openai-live` para validar duas interpretações diretamente na API oficial, sem executar ações.
+Com uma chave válida, execute `npm run test:openai-live` para validar duas interpretações diretamente na API oficial, sem executar ações no banco.
 
-O banco remoto permanece desativado neste workspace até a configuração externa. O envio real de WhatsApp continua fora desta fase e permanece MOCK.
+## Limites atuais
+
+- a entrega automática de push depende de um agendador externo chamando `/api/cron/reminders` com `CRON_SECRET`;
+- o teste ponta a ponta do push deve ser confirmado em aparelho real;
+- sem `OPENAI_API_KEY`, a interpretação permanece no provider local;
+- o envio real de WhatsApp continua fora do escopo e permanece mock.

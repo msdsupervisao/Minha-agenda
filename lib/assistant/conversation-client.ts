@@ -1,5 +1,6 @@
 import { BackendActionInterpreter } from './backend-action-interpreter';
 import { ConversationEngine } from './conversation-engine';
+import { browserTimezone } from '../data/time';
 import type { ActivityItem, AssistantAction, EngineResult, Source } from './types';
 
 export type DataProviderName = 'local' | 'supabase';
@@ -16,7 +17,7 @@ export function createConversationClient(provider: DataProviderName): Conversati
 }
 
 class LocalConversationClient implements ConversationClient {
-  private engine = new ConversationEngine(undefined, undefined, new BackendActionInterpreter());
+  private engine = new ConversationEngine(undefined, undefined, new BackendActionInterpreter(), browserTimezone());
   async activities() { return this.engine.activities(); }
   process(text: string, source: Source) { return this.engine.process(text, source); }
   confirm(action?: AssistantAction, source: Source = 'text') { return this.engine.confirm(action, source); }

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import RegisterSW from '@/components/RegisterSW';
+import TimezoneSync from '@/components/TimezoneSync';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -32,6 +33,7 @@ export default function RootLayout({
     <html lang="pt-BR">
       <body>
         {children}
+        <TimezoneSync />
         <RegisterSW />
       </body>
     </html>

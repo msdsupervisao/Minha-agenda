@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { getScreenContext, wallTimeToUtcIso } from '@/lib/data/screen-queries';
+import { resolveTimezone } from '@/lib/data/server-timezone';
 
 export type ActionResult = { ok: boolean; error?: string };
 
@@ -18,7 +19,7 @@ export async function updateExpense(
   if (!Number.isFinite(amount) || amount <= 0) return { ok: false, error: 'Informe um valor maior que zero.' };
   if (!category) return { ok: false, error: 'A categoria não pode ficar vazia.' };
   if (!input.occurredAt) return { ok: false, error: 'Data inválida.' };
-  const occurredIso = wallTimeToUtcIso(input.occurredAt);
+  const occurredIso = wallTimeToUtcIso(input.occurredAt, await resolveTimezone());
 
   const { error } = await ctx.client.from('expenses')
     .update({ amount, category, occurred_at: occurredIso })

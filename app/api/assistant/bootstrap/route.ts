@@ -12,7 +12,7 @@ export async function GET() {
   const user = await getAuthenticatedUser();
   if (!user) return NextResponse.json({ error: 'Sessão expirada.' }, { status: 401 });
   try {
-    const activities = await loadPersistentActivities(createClient(), user.id);
+    const activities = await loadPersistentActivities(await createClient(), user.id);
     return NextResponse.json({ activities }, { headers: { 'cache-control': 'no-store' } });
   } catch {
     return NextResponse.json({ error: 'Não foi possível carregar sua memória.' }, { status: 500 });

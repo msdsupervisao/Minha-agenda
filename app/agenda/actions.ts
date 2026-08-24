@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { getScreenContext, wallTimeToUtcIso } from '@/lib/data/screen-queries';
+import { resolveTimezone } from '@/lib/data/server-timezone';
 import type { AgendaKind } from '@/lib/data/agenda';
 
 export type ActionResult = { ok: boolean; error?: string };
@@ -24,17 +25,18 @@ export async function updateAgendaItem(
   if (!ctx) return { ok: false, error: 'Sessão expirada.' };
   const title = input.title.trim();
   if (!title) return { ok: false, error: 'O título não pode ficar vazio.' };
+  const timezone = await resolveTimezone();
 
   let patch: Record<string, unknown>;
   if (kind === 'reminder') {
     if (!input.at) return { ok: false, error: 'Informe a data e a hora do lembrete.' };
-    patch = { title, due_at: wallTimeToUtcIso(input.at) };
+    patch = { title, due_at: wallTimeToUtcIso(input.at, timezone) };
   } else if (kind === 'task') {
-    patch = { title, due_at: input.at ? wallTimeToUtcIso(input.at) : null };
+    patch = { title, due_at: input.at ? wallTimeToUtcIso(input.at, timezone) : null };
   } else {
     if (!input.at) return { ok: false, error: 'Informe a data e a hora do compromisso.' };
-    const startsAt = wallTimeToUtcIso(input.at);
-    const endsAt = input.endsAt ? wallTimeToUtcIso(input.endsAt) : null;
+    const startsAt = wallTimeToUtcIso(input.at, timezone);
+    const endsAt = input.endsAt ? wallTimeToUtcIso(input.endsAt, timezone) : null;
     if (endsAt && endsAt < startsAt) return { ok: false, error: 'O término não pode ser antes do início.' };
     patch = { title, starts_at: startsAt, ends_at: endsAt };
   }

@@ -3,8 +3,9 @@ import test from 'node:test';
 import { buildAgendaItems, groupAgenda, curateForToday } from '../lib/data/agenda';
 import {
   wallTimeToUtcIso, zonedStartOfDay, zonedStartOfMonth,
-  normalizeExpenseFilter, expenseRangeStart,
+  normalizeExpenseFilter, expenseRangeStart, isValidTimeZone,
 } from '../lib/data/time';
+import { rangeBounds } from '../lib/assistant/memory';
 import { formatBRL, formatTime, relativeDayLabel, toDatetimeLocal } from '../lib/format';
 import type { CalendarEvent, Reminder, Task } from '../lib/assistant/types';
 
@@ -23,6 +24,21 @@ function event(id: string, startsAt: string): CalendarEvent {
 
 test('fuso: wallTimeToUtcIso converte hora de parede de Cuiaba para UTC', () => {
   assert.equal(wallTimeToUtcIso('2026-08-21T09:00'), '2026-08-21T13:00:00.000Z');
+});
+
+test('fuso: conversão explícita acompanha diferentes relógios do dispositivo', () => {
+  assert.equal(wallTimeToUtcIso('2026-08-21T09:00', 'America/Sao_Paulo'), '2026-08-21T12:00:00.000Z');
+  assert.equal(wallTimeToUtcIso('2026-08-21T09:00', 'America/Cuiaba'), '2026-08-21T13:00:00.000Z');
+  assert.equal(wallTimeToUtcIso('2026-08-21T09:00', 'Europe/Lisbon'), '2026-08-21T08:00:00.000Z');
+  assert.equal(isValidTimeZone('America/Sao_Paulo'), true);
+  assert.equal(isValidTimeZone('fuso/inexistente'), false);
+});
+
+test('fuso: consultas de hoje usam os limites do dispositivo', () => {
+  const reference = new Date('2026-08-20T12:00:00.000Z');
+  assert.equal(rangeBounds('today', reference, 'America/Sao_Paulo').start.toISOString(), '2026-08-20T03:00:00.000Z');
+  assert.equal(rangeBounds('today', reference, 'America/Cuiaba').start.toISOString(), '2026-08-20T04:00:00.000Z');
+  assert.equal(rangeBounds('today', reference, 'Europe/Lisbon').start.toISOString(), '2026-08-19T23:00:00.000Z');
 });
 
 test('fuso: zonedStartOfDay e zonedStartOfMonth ancoram no fuso do app', () => {

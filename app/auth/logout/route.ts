@@ -5,7 +5,7 @@ import { AuthService } from '@/lib/auth/auth-service';
 
 export async function POST(request: Request) {
   if (getSupabasePublicConfig().configured) {
-    const supabase = createClient();
+    const supabase = await createClient();
     await new AuthService(supabase.auth).logout();
   }
   return NextResponse.redirect(new URL('/login', request.url), 303);

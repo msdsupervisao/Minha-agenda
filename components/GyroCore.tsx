@@ -359,11 +359,11 @@ export default function GyroCore({
   const scene = useRef<GyroScene | null>(null);
   const config: Config = { rings, finish, tint, color, thickness, innerRadius, gap, spin, hoverBoost, dragSensitivity, sizePercent };
   const configRef = useRef(config);
-  configRef.current = config;
+  const initialStateRef = useRef(state);
 
   useEffect(() => {
     if (!container.current) return;
-    const instance = new GyroScene(container.current, configRef.current, state);
+    const instance = new GyroScene(container.current, configRef.current, initialStateRef.current);
     scene.current = instance;
     instance.setSize(container.current.clientWidth, container.current.clientHeight);
     instance.start();
@@ -375,7 +375,11 @@ export default function GyroCore({
   }, []);
 
   useEffect(() => { scene.current?.setState(state); }, [state]);
-  useEffect(() => { scene.current?.updateConfig(configRef.current); }, [rings, finish, tint, color, thickness, innerRadius, gap, spin, hoverBoost, dragSensitivity, sizePercent]);
+  useEffect(() => {
+    const nextConfig: Config = { rings, finish, tint, color, thickness, innerRadius, gap, spin, hoverBoost, dragSensitivity, sizePercent };
+    configRef.current = nextConfig;
+    scene.current?.updateConfig(nextConfig);
+  }, [rings, finish, tint, color, thickness, innerRadius, gap, spin, hoverBoost, dragSensitivity, sizePercent]);
 
   return <button ref={container} type="button" onClick={onPress} aria-label="Iniciar comando por voz" style={{ position: 'relative', width: '100%', height: '100%', minWidth: 180, minHeight: 250, overflow: 'hidden', border: 0, padding: 0, background: 'transparent', cursor: 'pointer', touchAction: 'manipulation', ...style }} />;
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { AnimatePresence, motion, Reorder } from 'motion/react';
+import Link from 'next/link';
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import styles from './AgendaDesk.module.css';
 
@@ -29,6 +30,7 @@ export default function AgendaDesk() {
   const [notice, setNotice] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- browser storage is only available after hydration. */
   useEffect(() => {
     const storedItems = window.localStorage.getItem(storageKey);
     const storedNote = window.localStorage.getItem(`${storageKey}-note`);
@@ -38,6 +40,7 @@ export default function AgendaDesk() {
     if (storedNote) setNote(storedNote);
     setReady(true);
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => { if (ready) window.localStorage.setItem(storageKey, JSON.stringify(items)); }, [items, ready]);
   useEffect(() => { if (ready) window.localStorage.setItem(`${storageKey}-note`, note); }, [note, ready]);
@@ -67,9 +70,9 @@ export default function AgendaDesk() {
   return (
     <main className={styles.page}>
       <header className={styles.topbar}>
-        <a className={styles.wordmark} href="/" aria-label="Minha Agenda, início">minha<br />agenda<span>.</span></a>
+        <Link className={styles.wordmark} href="/" aria-label="Minha Agenda, início">minha<br />agenda<span>.</span></Link>
         <div className={styles.today}>{today}</div>
-        <div className={styles.topActions}><a href="/lab" className={styles.labLink}>laboratório</a><button className={styles.captureButton} onClick={() => setCaptureOpen(true)}>capturar <span>+</span></button></div>
+        <div className={styles.topActions}><Link href="/lab" className={styles.labLink}>laboratório</Link><button className={styles.captureButton} onClick={() => setCaptureOpen(true)}>capturar <span>+</span></button></div>
       </header>
 
       <section className={styles.opening} aria-labelledby="opening-title">

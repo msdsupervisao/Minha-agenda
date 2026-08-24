@@ -5,23 +5,30 @@ import { getSupabasePublicConfig } from '@/lib/supabase/config';
 import {
   expenseCategories, getScreenContext, listExpenses, normalizeExpenseFilter,
 } from '@/lib/data/screen-queries';
+import { resolveTimezone } from '@/lib/data/server-timezone';
 import type { Expense } from '@/lib/assistant/types';
 
 export const dynamic = 'force-dynamic';
 
-export default async function FinancasPage({ searchParams }: { searchParams: { filter?: string; category?: string } }) {
+type FinancasPageProps = {
+  searchParams: Promise<{ filter?: string; category?: string }>;
+};
+
+export default async function FinancasPage({ searchParams }: FinancasPageProps) {
   if (!getSupabasePublicConfig().configured) redirect('/');
   const ctx = await getScreenContext();
   if (!ctx) redirect('/login');
 
-  const filter = normalizeExpenseFilter(searchParams.filter);
-  const category = searchParams.category?.trim() || null;
+  const query = await searchParams;
+  const filter = normalizeExpenseFilter(query.filter);
+  const category = query.category?.trim() || null;
+  const tz = await resolveTimezone();
 
   let expenses: Expense[] = [];
   let categories: string[] = [];
   let loadError = false;
   try {
-    [expenses, categories] = await Promise.all([listExpenses(ctx, filter, category), expenseCategories(ctx)]);
+    [expenses, categories] = await Promise.all([listExpenses(ctx, filter, category, tz), expenseCategories(ctx)]);
   } catch {
     loadError = true;
   }
@@ -29,7 +36,7 @@ export default async function FinancasPage({ searchParams }: { searchParams: { f
 
   return (
     <AppShell title="Finanças" subtitle="Seus gastos, do jeito que você registrou." email={ctx.email}>
-      <FinancasView expenses={expenses} total={total} categories={categories} filter={filter} category={category} loadError={loadError} />
+      <FinancasView expenses={expenses} total={total} categories={categories} filter={filter} category={category} loadError={loadError} tz={tz} />
     </AppShell>
   );
 }

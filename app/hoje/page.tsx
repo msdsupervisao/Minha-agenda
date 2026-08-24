@@ -5,6 +5,7 @@ import AgendaView from '@/components/screens/AgendaView';
 import screens from '@/components/screens/Screens.module.css';
 import { getSupabasePublicConfig } from '@/lib/supabase/config';
 import { getScreenContext, listEvents, listExpenses, listReminders, listTasks } from '@/lib/data/screen-queries';
+import { resolveTimezone } from '@/lib/data/server-timezone';
 import { buildAgendaItems, curateForToday, type AgendaGroup } from '@/lib/data/agenda';
 import { formatBRL } from '@/lib/format';
 import type { Expense } from '@/lib/assistant/types';
@@ -15,15 +16,16 @@ export default async function HojePage() {
   if (!getSupabasePublicConfig().configured) redirect('/');
   const ctx = await getScreenContext();
   if (!ctx) redirect('/login');
+  const tz = await resolveTimezone();
 
   let groups: AgendaGroup[] = [];
   let expenses: Expense[] = [];
   let loadError = false;
   try {
     const [reminders, tasks, events, todayExpenses] = await Promise.all([
-      listReminders(ctx), listTasks(ctx), listEvents(ctx), listExpenses(ctx, 'today'),
+      listReminders(ctx), listTasks(ctx), listEvents(ctx), listExpenses(ctx, 'today', null, tz),
     ]);
-    groups = curateForToday(buildAgendaItems(reminders, tasks, events));
+    groups = curateForToday(buildAgendaItems(reminders, tasks, events), new Date(), tz);
     expenses = todayExpenses;
   } catch {
     loadError = true;
@@ -47,7 +49,7 @@ export default async function HojePage() {
         </div>
       ) : (
         <div className={screens.wrap}>
-          {groups.length > 0 && <AgendaView groups={groups} />}
+          {groups.length > 0 && <AgendaView groups={groups} tz={tz} />}
           {expenses.length > 0 && (
             <div>
               <p className={screens.sectionTitle}>Dinheiro · hoje</p>
