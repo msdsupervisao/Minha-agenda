@@ -1,4 +1,5 @@
 import { makeId } from './memory';
+import { estimateUsdCost } from './ai-cost';
 import type { AiTokenUsage } from './ai-provider';
 import type { AiProviderName, Intent } from './types';
 
@@ -42,9 +43,5 @@ export function usageFrom(input?: Partial<AiTokenUsage>): AiTokenUsage {
 }
 
 function estimateCost(model: string | null, usage: Pick<AiObservation, 'inputTokens' | 'outputTokens' | 'cachedInputTokens'>) {
-  if (model !== 'gpt-5.4-mini') return null;
-  const uncached = Math.max(0, usage.inputTokens - usage.cachedInputTokens);
-  return roundUsd((uncached * 0.75 + usage.cachedInputTokens * 0.075 + usage.outputTokens * 4.5) / 1_000_000);
+  return estimateUsdCost(model, usage);
 }
-
-function roundUsd(value: number) { return Math.round(value * 100_000_000) / 100_000_000; }
