@@ -15,6 +15,12 @@ async function handle(request: Request) {
   const client = createServiceClient();
   const now = new Date().toISOString();
 
+  // Handoffs carregam texto e telefone: registros não resgatados não devem ficar
+  // acumulados. O ACK apaga imediatamente; o cron cobre códigos abandonados.
+  const { count: cleanedHandoffs, error: cleanupError } = await client
+    .from('schedule_handoffs').delete({ count: 'exact' }).lt('expires_at', now);
+  if (cleanupError) console.error('[minha-agenda:data]', JSON.stringify({ timestamp: now, operation: 'schedule_cleanup', result: 'error', error: cleanupError.message }));
+
   const { data: due, error } = await client.from('reminders')
     .select('id,user_id,title,due_at,metadata')
     .lte('due_at', now).is('notified_at', null).is('deleted_at', null)
@@ -45,7 +51,7 @@ async function handle(request: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, checked: (due || []).length, sent, failed });
+  return NextResponse.json({ ok: true, checked: (due || []).length, sent, failed, cleanedHandoffs: cleanedHandoffs ?? 0 });
 }
 
 export async function POST(request: Request) { return handle(request); }

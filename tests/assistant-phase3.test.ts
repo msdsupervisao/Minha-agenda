@@ -171,6 +171,45 @@ test('mensagem para grupo desconhecido abre o seletor do WhatsApp sem criar cont
   assert.match(opened.reply, /Escolha grupo dos pais no WhatsApp/);
 });
 
+test('agenda mensagem futura para grupo e entrega o handoff ao aplicativo', async () => {
+  const { engine, repository } = setup();
+  const confirmation = await engine.process('Mande no grupo dos pais amanhã às 9 dizendo que teremos reunião.', 'text');
+  assert.equal(confirmation.kind, 'confirmation');
+  assert.equal(confirmation.action?.intent, 'schedule_whatsapp_message');
+  assert.equal(confirmation.action?.data.recipientName, 'grupo dos pais');
+  assert.equal(repository.read().contacts.length, 0);
+
+  const scheduled = await engine.process('Confirmo.', 'text');
+  assert.equal(scheduled.kind, 'executed');
+  assert.equal(scheduled.whatsappHandoff, undefined);
+  assert.equal(scheduled.scheduleHandoff?.recipientName, 'grupo dos pais');
+  assert.equal(scheduled.scheduleHandoff?.body, 'teremos reunião.');
+  assert.equal(scheduled.scheduleHandoff?.phone, null);
+  assert.ok(Date.parse(String(scheduled.scheduleHandoff?.dueAt)) > Date.now());
+  assert.ok(repository.read().actionLogs.some((log) => log.intent === 'schedule_whatsapp_message'));
+});
+
+test('data mencionada no texto da mensagem não transforma envio imediato em agendamento', async () => {
+  const { engine } = setup();
+  const confirmation = await engine.process('Mande no grupo dos pais dizendo que amanhã não tem aula.', 'text');
+  assert.equal(confirmation.kind, 'confirmation');
+  assert.equal(confirmation.action?.intent, 'send_whatsapp_message');
+});
+
+test('agendamento incompleto pergunta mensagem e horário sem perder o destinatário', async () => {
+  const { engine } = setup();
+  const bodyQuestion = await engine.process('Agende uma mensagem para o grupo dos pais.', 'text');
+  assert.equal(bodyQuestion.kind, 'question');
+  assert.match(bodyQuestion.reply, /Que mensagem/i);
+  const dateQuestion = await engine.process('A reunião mudou de horário.', 'text');
+  assert.equal(dateQuestion.kind, 'question');
+  assert.match(dateQuestion.reply, /dia e horário/i);
+  const confirmation = await engine.process('Amanhã às 10.', 'text');
+  assert.equal(confirmation.kind, 'confirmation');
+  assert.equal(confirmation.action?.data.recipientName, 'grupo dos pais');
+  assert.equal(confirmation.action?.data.body, 'A reunião mudou de horário.');
+});
+
 test('corrige informação e desfaz a última ação reversível', async () => {
   const { engine, repository } = setup();
   await engine.process('Gastei 30 reais em combustível.', 'voice');

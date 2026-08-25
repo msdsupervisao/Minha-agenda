@@ -103,6 +103,8 @@ export class OperationalMemoryRepository {
         ? 'mensagem preparada'
         : log.intent === 'send_whatsapp_message'
           ? 'aberto no WhatsApp'
+          : log.intent === 'schedule_whatsapp_message'
+            ? 'aguardando confirmação no celular'
           : 'registrado agora',
     }));
   }
@@ -215,5 +217,5 @@ export function resolveRange(text: string): 'today' | 'tomorrow' | 'week' | 'nex
 }
 
 export function intentLabel(intent: Intent) {
-  return ({ create_expense: 'Gasto', create_reminder: 'Lembrete', create_note: 'Anotação', create_task: 'Tarefa', create_event: 'Evento', prepare_whatsapp_message: 'Mensagem', send_whatsapp_message: 'Mensagem enviada' } as Partial<Record<Intent, string>>)[intent] || 'Ação';
+  return ({ create_expense: 'Gasto', create_reminder: 'Lembrete', create_note: 'Anotação', create_task: 'Tarefa', create_event: 'Evento', prepare_whatsapp_message: 'Mensagem', send_whatsapp_message: 'Mensagem enviada', schedule_whatsapp_message: 'Mensagem agendada' } as Partial<Record<Intent, string>>)[intent] || 'Ação';
 }

@@ -84,6 +84,7 @@ export function buildSystemPrompt(request: ProviderRequest) {
     'Lembrete que se repete (todos os dias, toda semana/segunda, todo mês/dia X): defina recurrence = daily|weekly|monthly e due_at com a PRIMEIRA ocorrência futura no horário citado. Sem repetição, recurrence null.',
     'João e outros nomes são apenas nomes; a aplicação resolverá contatos e homônimos depois.',
     'Em mensagens para grupos do WhatsApp, preserve o nome completo do grupo em recipient_name, incluindo a palavra grupo ou turma.',
+    'Use schedule_whatsapp_message quando o usuário pedir para preparar/enviar uma mensagem em uma data ou horário futuro; preencha recipient_name, body e due_at. Use send_whatsapp_message apenas para abrir o WhatsApp agora.',
     'requires_confirmation é informativo: a política da aplicação toma a decisão final.',
     'Use somente os intents fornecidos pelo schema. Se não houver correspondência segura, use intent null.',
   ].join('\n');

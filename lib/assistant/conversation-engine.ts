@@ -2,7 +2,7 @@ import { requiresConfirmation } from './confirmation-policy';
 import { executeAction } from './executor';
 import { cleanContactDescription } from './interpreter';
 import { OperationalMemoryRepository, makeId, normalize } from './memory';
-import { combineDateTime, parseDate, parseTime } from './parsing';
+import { combineDateTime, parseDate, parseRelativeDateTime, parseTime } from './parsing';
 import { MockWhatsAppService, type WhatsAppService } from './whatsapp-service';
 import { LocalActionInterpreter } from './local-action-interpreter';
 import { extractAmount } from './parsing';
@@ -139,6 +139,40 @@ export class ConversationEngine {
       action.data.body = message.body;
     }
 
+    if (action.intent === 'schedule_whatsapp_message') {
+      const recipient = String(action.data.recipientName || '').trim();
+      const body = String(action.data.body || '').trim();
+      const dueAt = stringOrNull(action.data.dueAt);
+      if (!recipient) {
+        this.setPending({ kind: 'scheduled_message_recipient', body, dueAt });
+        return this.say('question', 'Para quem devo agendar a mensagem?', action);
+      }
+      if (!body) {
+        this.setPending({ kind: 'scheduled_message_body', recipientName: recipient, dueAt });
+        return this.say('question', `Que mensagem devo preparar para ${recipient}?`, action);
+      }
+      if (!dueAt || Number.isNaN(Date.parse(dueAt)) || Date.parse(dueAt) <= Date.now()) {
+        this.setPending({ kind: 'scheduled_message_date', recipientName: recipient, body });
+        return this.say('question', 'Em qual dia e horário devo avisar você?', action);
+      }
+
+      const recipientResult = await this.resolveMessageRecipient(action);
+      if (recipientResult) return recipientResult;
+
+      let messageId = stringOrNull(action.data.messageId);
+      if (!messageId) {
+        const prepared = await this.prepareWithContact(action, source);
+        if (prepared.kind !== 'executed') return prepared;
+        messageId = this.repository.read().lastPreparedMessageId;
+      }
+      if (!messageId) return this.say('error', 'Não consegui preparar a mensagem para o agendamento.', action);
+      const message = this.repository.read().messages.find((item) => item.id === messageId);
+      if (!message || message.status !== 'prepared') return this.say('error', 'A mensagem preparada não está mais disponível.', action);
+      action.data.messageId = messageId;
+      action.data.recipientName = message.recipientName;
+      action.data.body = message.body;
+    }
+
     if (needsContact(action)) {
       const contactResult = await this.resolveContact(action);
       if (contactResult) return contactResult;
@@ -148,6 +182,9 @@ export class ConversationEngine {
       this.setPending({ kind: 'confirmation', action });
       const recipient = String(action.data.recipientName || 'o contato');
       const body = String(action.data.body || '');
+      if (action.intent === 'schedule_whatsapp_message') {
+        return this.say('confirmation', `Vou preparar para ${recipient}, no horário escolhido: “${body}”. Confirmar o agendamento no celular?`, action);
+      }
       return this.say('confirmation', `Vou abrir o WhatsApp com esta mensagem para ${recipient}: “${body}”. Confirmar?`, action);
     }
     return this.run(action, source);
@@ -259,11 +296,30 @@ export class ConversationEngine {
       return this.route({ id: makeId(), intent: 'prepare_whatsapp_message', title: `Mensagem para ${input}`, summary: '', requiresConfirmation: false, data: { recipientName: input, body: pending.body } }, source);
     }
 
+    if (pending.kind === 'scheduled_message_body') {
+      this.setPending(null);
+      return this.route({ id: makeId(), intent: 'schedule_whatsapp_message', title: `Agendar mensagem para ${pending.recipientName}`, summary: '', requiresConfirmation: true, data: { recipientName: pending.recipientName, body: input, dueAt: pending.dueAt } }, source);
+    }
+
+    if (pending.kind === 'scheduled_message_recipient') {
+      this.setPending(null);
+      return this.route({ id: makeId(), intent: 'schedule_whatsapp_message', title: `Agendar mensagem para ${input}`, summary: '', requiresConfirmation: true, data: { recipientName: input, body: pending.body, dueAt: pending.dueAt } }, source);
+    }
+
+    if (pending.kind === 'scheduled_message_date') {
+      const date = parseDate(input, new Date(), this.timezone);
+      const relativeDate = parseRelativeDateTime(input, new Date());
+      if (!relativeDate && !date) return this.say('question', 'Não consegui identificar. Diga, por exemplo, “amanhã às 9”.', null);
+      this.setPending(null);
+      const dueAt = relativeDate?.toISOString() || combineDateTime(date!, parseTime(input), this.timezone);
+      return this.route({ id: makeId(), intent: 'schedule_whatsapp_message', title: `Agendar mensagem para ${pending.recipientName}`, summary: '', requiresConfirmation: true, data: { recipientName: pending.recipientName, body: pending.body, dueAt } }, source);
+    }
+
     if (pending.kind === 'contact_identity') {
       const contact = this.repository.createContact(pending.contactName, cleanContactDescription(input));
       this.setPending(null);
       pending.action.data.contactId = contact.id;
-      if (pending.action.intent === 'prepare_whatsapp_message' || pending.action.intent === 'send_whatsapp_message') pending.action.data.recipientName = contact.name;
+      if (pending.action.intent === 'prepare_whatsapp_message' || pending.action.intent === 'send_whatsapp_message' || pending.action.intent === 'schedule_whatsapp_message') pending.action.data.recipientName = contact.name;
       return this.route(pending.action, source);
     }
 
@@ -285,15 +341,15 @@ export class ConversationEngine {
   private async run(action: AssistantAction, source: Source) {
     try {
       const executed = await executeAction(action, source, this.repository, this.whatsapp, this.timezone);
-      return this.say(isReadIntent(action.intent) ? 'query' : 'executed', executed.reply, action, executed.whatsappHandoff);
+      return this.say(isReadIntent(action.intent) ? 'query' : 'executed', executed.reply, action, executed.whatsappHandoff, executed.scheduleHandoff);
     } catch (error) {
       return this.say('error', error instanceof Error ? error.message : 'Não consegui executar essa ação.', action);
     }
   }
 
   private setPending(pending: PendingQuestion | null) { this.repository.update((memory) => { memory.pendingQuestion = pending; }); }
-  private say(kind: EngineResult['kind'], reply: string, action: AssistantAction | null, whatsappHandoff?: EngineResult['whatsappHandoff']) { this.repository.addTurn('assistant', reply); return this.result(kind, reply, action, whatsappHandoff); }
-  private result(kind: EngineResult['kind'], reply: string, action: AssistantAction | null, whatsappHandoff?: EngineResult['whatsappHandoff']): EngineResult { return { kind, reply, action, activities: this.repository.activities(), whatsappHandoff, provider: this.currentProvider, providerNotice: this.providerNotice }; }
+  private say(kind: EngineResult['kind'], reply: string, action: AssistantAction | null, whatsappHandoff?: EngineResult['whatsappHandoff'], scheduleHandoff?: EngineResult['scheduleHandoff']) { this.repository.addTurn('assistant', reply); return this.result(kind, reply, action, whatsappHandoff, scheduleHandoff); }
+  private result(kind: EngineResult['kind'], reply: string, action: AssistantAction | null, whatsappHandoff?: EngineResult['whatsappHandoff'], scheduleHandoff?: EngineResult['scheduleHandoff']): EngineResult { return { kind, reply, action, activities: this.repository.activities(), whatsappHandoff, scheduleHandoff, provider: this.currentProvider, providerNotice: this.providerNotice }; }
 }
 
 function needsContact(action: AssistantAction) { return ['create_reminder', 'create_note', 'create_task', 'create_event'].includes(action.intent) && Boolean(action.data.contactName || action.data.recipientName); }

@@ -25,6 +25,8 @@ export default defineConfig([
     '.next/**',
     'out/**',
     'build/**',
+    'mobile/dist/**',
+    'mobile/android/**',
     'next-env.d.ts',
   ]),
 ]);

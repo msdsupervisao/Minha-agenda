@@ -12,6 +12,7 @@ export type Intent =
   | 'search_contact'
   | 'prepare_whatsapp_message'
   | 'send_whatsapp_message'
+  | 'schedule_whatsapp_message'
   | 'undo_last_action'
   | 'correct_last_expense';
 
@@ -122,6 +123,9 @@ export type PendingQuestion =
   | { kind: 'task_title'; dueAt: string | null; contactName: string | null }
   | { kind: 'message_body'; recipientName: string }
   | { kind: 'message_recipient'; body: string }
+  | { kind: 'scheduled_message_body'; recipientName: string; dueAt: string | null }
+  | { kind: 'scheduled_message_recipient'; body: string; dueAt: string | null }
+  | { kind: 'scheduled_message_date'; recipientName: string; body: string }
   | { kind: 'contact_identity'; contactName: string; action: AssistantAction }
   | { kind: 'contact_choice'; contactIds: string[]; action: AssistantAction }
   | { kind: 'confirmation'; action: AssistantAction };
@@ -158,6 +162,7 @@ export type EngineResult = {
   action: AssistantAction | null;
   activities: ActivityItem[];
   whatsappHandoff?: import('./whatsapp-handoff').WhatsAppHandoff;
+  scheduleHandoff?: import('./whatsapp-handoff').WhatsAppHandoff & { dueAt: string };
   provider?: AiProviderName;
   providerNotice?: string;
 };

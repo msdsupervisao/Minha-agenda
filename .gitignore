@@ -7,3 +7,8 @@ node_modules
 .DS_Store
 *.tsbuildinfo
 supabase/.temp
+mobile/dist
+mobile/android/.gradle
+mobile/android/local.properties
+*.jks
+*.keystore

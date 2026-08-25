@@ -4,7 +4,12 @@ import { appTimezone } from '../data/time';
 import type { AssistantAction, CalendarEvent, Expense, Note, Reminder, Source, Task } from './types';
 import type { WhatsAppHandoff } from './whatsapp-handoff';
 
-export type ExecutionResult = { reply: string; entityId: string | null; whatsappHandoff?: WhatsAppHandoff };
+export type ExecutionResult = {
+  reply: string;
+  entityId: string | null;
+  whatsappHandoff?: WhatsAppHandoff;
+  scheduleHandoff?: WhatsAppHandoff & { dueAt: string };
+};
 
 export async function executeAction(
   action: AssistantAction,
@@ -128,6 +133,26 @@ export async function executeAction(
       ? `A mensagem está pronta. Vou abrir a conversa com ${message.recipientName}; revise e toque em Enviar no WhatsApp.`
       : `A mensagem está pronta. Escolha ${message.recipientName} no WhatsApp, revise e toque em Enviar.`;
     return { reply, entityId: message.id, whatsappHandoff };
+  }
+
+  if (action.intent === 'schedule_whatsapp_message') {
+    const message = memory.messages.find((item) => item.id === String(action.data.messageId));
+    if (!message) throw new Error('Mensagem preparada não encontrada.');
+    const contact = memory.contacts.find((item) => item.id === message.contactId) || null;
+    const dueAt = String(action.data.dueAt || '');
+    if (!dueAt || new Date(dueAt).getTime() <= Date.now()) throw new Error('Escolha um horário futuro para a mensagem.');
+    const scheduleHandoff = {
+      recipientName: message.recipientName,
+      body: message.body,
+      phone: contact?.phone || null,
+      dueAt,
+    };
+    repository.log({ intent: action.intent, entityType: 'message', entityId: message.id, summary: `Preparar agendamento para ${message.recipientName}`, source, reversible: false, before: message, after: message });
+    return {
+      reply: `A mensagem está pronta para ${message.recipientName}. Vou abrir o aplicativo para agendar o aviso em ${friendlyDate(dueAt, timezone)}.`,
+      entityId: message.id,
+      scheduleHandoff,
+    };
   }
 
   if (action.intent === 'correct_last_expense') {

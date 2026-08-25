@@ -25,7 +25,7 @@ const labels: Record<AssistantState, string> = {
 
 const quickCommands = [
   'Gastei 30 reais agora em combustível',
-  'Me lembre de mandar mensagem para João amanhã às 9',
+  'Mande no grupo dos pais amanhã às 9 dizendo que teremos reunião',
   'Anota que preciso conversar com o professor sobre a turma de Designer',
 ];
 
@@ -40,6 +40,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null 
   const [recent, setRecent] = useState<ActivityItem[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [providerNotice, setProviderNotice] = useState('Verificando IA…');
+  const [appDeepLink, setAppDeepLink] = useState<string | null>(null);
   const timer = useRef<number | null>(null);
   const engine = useRef<ConversationClient | null>(null);
 
@@ -71,6 +72,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null 
   async function processCommand(command: string, source: 'voice' | 'text') {
     const clean = command.trim();
     if (!clean) return;
+    setAppDeepLink(null);
     setTranscript(clean);
     setState('processing');
     setReply('');
@@ -152,6 +154,24 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null 
       setReply(result.reply);
       return;
     }
+    if (result.scheduleHandoff) {
+      try {
+        const response = await fetch('/api/schedule/create', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(result.scheduleHandoff),
+        });
+        const payload = await response.json() as { deepLink?: string; error?: string };
+        if (!response.ok || !payload.deepLink) throw new Error(payload.error || 'Não consegui preparar o aplicativo.');
+        setAppDeepLink(payload.deepLink);
+        finish(result.reply);
+        window.setTimeout(() => window.location.assign(payload.deepLink!), 120);
+      } catch (error) {
+        setState('error');
+        setReply(error instanceof Error ? error.message : 'Não consegui abrir o aplicativo de agendamento.');
+      }
+      return;
+    }
     finish(result.reply);
     if (result.whatsappHandoff) {
       const url = buildWhatsAppHandoffUrl(result.whatsappHandoff);
@@ -201,7 +221,13 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null 
 
       {state === 'confirmation' && pending && <div className={styles.confirmation}>
         <p><b>Para:</b> {String(pending.data.recipientName ?? 'contato')}</p><p>{String(pending.data.body ?? '')}</p>
-        <div><button type="button" className={styles.secondary} onClick={() => void cancelConfirmation()}>Cancelar</button><button type="button" className={styles.primary} onClick={() => void confirm()}>Abrir WhatsApp</button></div>
+        {pending.intent === 'schedule_whatsapp_message' && <p><b>Quando:</b> {formatScheduledAt(pending.data.dueAt)}</p>}
+        <div><button type="button" className={styles.secondary} onClick={() => void cancelConfirmation()}>Cancelar</button><button type="button" className={styles.primary} onClick={() => void confirm()}>{pending.intent === 'schedule_whatsapp_message' ? 'Agendar no celular' : 'Abrir WhatsApp'}</button></div>
+      </div>}
+
+      {appDeepLink && <div className={styles.confirmation}>
+        <p>Se o aplicativo não abriu sozinho, toque abaixo.</p>
+        <div><a className={styles.primary} href={appDeepLink}>Abrir aplicativo</a></div>
       </div>}
 
       <form className={styles.commandForm} onSubmit={submit}>
@@ -219,7 +245,11 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null 
   </main>;
 }
 
-function iconFor(intent: string) { return ({ create_expense: 'R$', create_reminder: '◷', create_note: '✦', create_task: '✓', create_event: '□', prepare_whatsapp_message: '↗', send_whatsapp_message: '↗', undo_last_action: '↶' } as Record<string, string>)[intent] || '•'; }
+function iconFor(intent: string) { return ({ create_expense: 'R$', create_reminder: '◷', create_note: '✦', create_task: '✓', create_event: '□', prepare_whatsapp_message: '↗', send_whatsapp_message: '↗', schedule_whatsapp_message: '◷', undo_last_action: '↶' } as Record<string, string>)[intent] || '•'; }
+function formatScheduledAt(value: unknown) {
+  if (typeof value !== 'string' || Number.isNaN(Date.parse(value))) return 'horário a confirmar';
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+}
 function initials(email: string | null) { const value = email?.split('@')[0] || 'MA'; return value.slice(0, 2).toLocaleUpperCase('pt-BR'); }
 function MicIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="13" rx="4" /><path d="M5 12a7 7 0 0 0 14 0M12 19v3M8 22h8" /></svg>; }
 function ArrowIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6" /></svg>; }

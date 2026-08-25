@@ -31,6 +31,19 @@ export function interpretCommand(input: string, now = new Date(), tz = appTimezo
   if (/quem.*esperando.*responder|esperando resposta/.test(clean)) return action('search_memory', 'Consultar respostas', '', { query: 'awaiting_reply' });
   if (/^(quem|qual)\s+(?:e|é)?\s*[\p{L}]+/u.test(clean)) return action('search_contact', 'Localizar pessoa', '', { name: text.replace(/^(quem|qual)\s+(?:é|e)?\s*/i, '').replace(/[?!.]/g, '').trim() });
 
+  const messageInstruction = text.split(/\b(?:dizendo|avisando)\b|:/i, 1)[0];
+  const explicitSchedule = /^(?:agende|agenda|programe|programa)\b/.test(clean) && /mensagem/.test(clean);
+  const timedSend = /^(?:envie|manda|mande)\b/.test(clean)
+    && Boolean(parseRelativeDateTime(messageInstruction, now) || parseDate(messageInstruction, now, tz));
+  if (explicitSchedule || timedSend) {
+    const relative = parseRelativeDateTime(messageInstruction, now);
+    const date = parseDate(messageInstruction, now, tz);
+    const dueAt = relative?.toISOString() || (date ? combineDateTime(date, parseTime(messageInstruction), tz) : null);
+    const recipient = messageRecipient(messageInstruction);
+    const body = messageBody(text);
+    return action('schedule_whatsapp_message', `Agendar mensagem${recipient ? ` para ${recipient}` : ''}`, '', { recipientName: recipient, body, dueAt }, true);
+  }
+
   if (/^(prepare|prepara|rascunhe|rascunha)\b/.test(clean) && /mensagem/.test(clean)) {
     const recipient = messageRecipient(text);
     const body = messageBody(text);
@@ -107,7 +120,8 @@ function cleanRecipient(value: string) {
 }
 
 function messageRecipient(text: string) {
-  return cleanRecipient(text.match(/(?:para|pro|pra|no|na|ao|à)\s+(.+?)(?=\s+(?:dizendo|avisando|que)\b|\s*[:,]|$)/i)?.[1] || '');
+  const value = cleanRecipient(text.match(/(?:para|pro|pra|no|na|ao|à)\s+(.+?)(?=\s+(?:dizendo|avisando|que)\b|\s*[:,]|$)/i)?.[1] || '');
+  return stripMessageRecipientTiming(value);
 }
 
 function messageBody(text: string) {
@@ -115,4 +129,13 @@ function messageBody(text: string) {
     || text.match(/\s+que\s+(.+)$/i)?.[1]?.trim()
     || text.match(/:\s*(.+)$/)?.[1]?.trim()
     || '';
+}
+
+function stripMessageRecipientTiming(value: string) {
+  return stripRelativeDateTime(value)
+    .replace(/\s+(?:depois\s+de\s+amanh[ãa]|amanh[ãa]|hoje|semana\s+que\s+vem|próxima\s+semana|proxima\s+semana|m[êe]s\s+que\s+vem|próximo\s+m[êe]s|proximo\s+mes)(?=\s|$).*$/iu, '')
+    .replace(/\s+(?:domingo|segunda(?:-feira)?|terça(?:-feira)?|terca(?:-feira)?|quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|sábado|sabado)(?=\s|$).*$/iu, '')
+    .replace(/\s+(?:às|as|a)\s+(?:\d{1,2}(?::|h)?\d{0,2}|uma|duas|três|tres|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|catorze|quatorze|quinze|dezesseis|dezessete|dezoito|dezenove|vinte)\s*$/iu, '')
+    .replace(/[.,;!?]+$/, '')
+    .trim();
 }

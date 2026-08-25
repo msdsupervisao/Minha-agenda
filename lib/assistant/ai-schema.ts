@@ -5,7 +5,7 @@ import type { AiProviderName, AssistantAction, Intent } from './types';
 export const intentValues = [
   'create_expense', 'create_reminder', 'create_note', 'create_task', 'create_event',
   'read_expenses', 'read_tasks', 'read_reminders', 'read_events', 'search_memory', 'search_contact',
-  'prepare_whatsapp_message', 'send_whatsapp_message', 'undo_last_action', 'correct_last_expense',
+  'prepare_whatsapp_message', 'send_whatsapp_message', 'schedule_whatsapp_message', 'undo_last_action', 'correct_last_expense',
 ] as const satisfies readonly Intent[];
 
 const rangeValues = ['today', 'tomorrow', 'week', 'next_week', 'month', 'next_month', 'all'] as const;
@@ -82,6 +82,7 @@ export function actionFromStructured(value: AiStructuredInterpretation, provider
     case 'search_contact': return { ...common, title: 'Localizar pessoa', data: { name: e.contact_name || e.query } };
     case 'prepare_whatsapp_message': return { ...common, title: `Mensagem para ${e.recipient_name || 'contato'}`, data: { recipientName: e.recipient_name, body: e.body } };
     case 'send_whatsapp_message': return { ...common, title: `Enviar mensagem${e.recipient_name ? ` para ${e.recipient_name}` : ''}`, data: { recipientName: e.recipient_name, body: e.body, messageId: e.message_id } };
+    case 'schedule_whatsapp_message': return { ...common, title: `Agendar mensagem${e.recipient_name ? ` para ${e.recipient_name}` : ''}`, data: { recipientName: e.recipient_name, body: e.body, dueAt: e.due_at, messageId: e.message_id } };
     case 'undo_last_action': return { ...common, title: 'Desfazer', data: {} };
     case 'correct_last_expense': return { ...common, title: 'Corrigir gasto', data: { amount: e.correction_amount ?? e.amount } };
   }
