@@ -5,6 +5,7 @@ import { useState, useTransition } from 'react';
 import type { SchoolClass } from '@/lib/assistant/types';
 import { createClassAction, deleteClassAction, updateClassAction } from '@/app/turmas/actions';
 import { defaultNoticeTemplates } from '@/lib/notices/weekly';
+import type { GeneratedNotices } from '@/lib/notices/ai-generator';
 import styles from './Screens.module.css';
 
 type Form = {
@@ -45,13 +46,18 @@ export default function TurmasView({ classes, loadError }: { classes: SchoolClas
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [form, setForm] = useState<Form>(EMPTY);
   const [error, setError] = useState<string | null>(null);
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<{ classId: string; models: GeneratedNotices } | null>(null);
+  const [aiInfo, setAiInfo] = useState<{ classId: string; text: string } | null>(null);
 
   function openCreate() {
     setError(null); setEditingId(null); setConfirmingId(null);
+    setSuggestions(null); setAiInfo(null);
     setForm(EMPTY); setCreating(true);
   }
   function openEdit(item: SchoolClass) {
     setError(null); setCreating(false); setConfirmingId(null);
+    setSuggestions(null); setAiInfo(null);
     setEditingId(item.id);
     setForm({
       name: item.name,
@@ -91,7 +97,46 @@ export default function TurmasView({ classes, loadError }: { classes: SchoolClas
     });
   }
 
-  function fields(idPrefix: string) {
+  async function generateWithAi(classId: string) {
+    setError(null); setAiInfo(null); setSuggestions(null); setGeneratingId(classId);
+    try {
+      const response = await fetch('/api/notices/generate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ classId }),
+      });
+      const payload = await response.json() as { models?: GeneratedNotices; error?: string };
+      if (!response.ok || !payload.models) throw new Error(payload.error || 'Não foi possível gerar novas versões.');
+      setSuggestions({ classId, models: payload.models });
+    } catch (generationError) {
+      setError(generationError instanceof Error ? generationError.message : 'Não foi possível gerar novas versões.');
+    } finally {
+      setGeneratingId(null);
+    }
+  }
+
+  function fillInitialTemplates() {
+    const initial = defaultNoticeTemplates(form.course || form.name);
+    setForm({
+      ...form,
+      noticeTemplateDirect: form.noticeTemplateDirect || initial.noticeTemplateDirect,
+      noticeTemplateMotivational: form.noticeTemplateMotivational || initial.noticeTemplateMotivational,
+      noticeTemplateImpactful: form.noticeTemplateImpactful || initial.noticeTemplateImpactful,
+    });
+  }
+
+  function applySuggestions(classId: string, models: GeneratedNotices) {
+    setForm({
+      ...form,
+      noticeTemplateDirect: models.direct,
+      noticeTemplateMotivational: models.motivational,
+      noticeTemplateImpactful: models.impactful,
+    });
+    setSuggestions(null);
+    setAiInfo({ classId, text: 'Novas versões carregadas. Revise os textos e toque em Salvar para confirmar.' });
+  }
+
+  function fields(idPrefix: string, classId?: string) {
     return (
       <div className={styles.edit}>
         <div className={styles.field}>
@@ -117,9 +162,28 @@ export default function TurmasView({ classes, loadError }: { classes: SchoolClas
           <textarea id={`notes-${idPrefix}`} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
         </div>
         <div className={styles.noticeHeader}>
-          <div><strong>Avisos semanais</strong><small>Três mensagens fixas para carregar por voz.</small></div>
-          <button type="button" className={`${styles.btn} ${styles.btnGhost}`} onClick={() => setForm({ ...form, ...defaultNoticeTemplates(form.course || form.name) })}>Gerar modelos iniciais</button>
+          <div><strong>Avisos semanais</strong><small>Seus três modelos são a referência de estilo.</small></div>
+          {classId
+            ? <button type="button" className={`${styles.btn} ${styles.btnGhost}`} onClick={() => void generateWithAi(classId)} disabled={pending || generatingId === classId}>{generatingId === classId ? 'Criando…' : 'Criar novas versões com IA'}</button>
+            : <button type="button" className={`${styles.btn} ${styles.btnGhost}`} onClick={fillInitialTemplates}>Preencher modelos básicos</button>}
         </div>
+        {classId && suggestions?.classId === classId && <div className={styles.aiPreview}>
+          <strong>Prévia criada pela IA</strong>
+          <small>Nada foi substituído. Compare, edite se quiser e escolha se deseja usar estas versões.</small>
+          {([
+            ['direct', 'Modelo 1 — Direto'],
+            ['motivational', 'Modelo 2 — Motivacional'],
+            ['impactful', 'Modelo 3 — Impactante'],
+          ] as const).map(([key, label]) => <div className={styles.field} key={key}>
+            <label htmlFor={`suggestion-${key}-${idPrefix}`}>{label}</label>
+            <textarea id={`suggestion-${key}-${idPrefix}`} className={styles.noticeTextarea} value={suggestions.models[key]} onChange={(event) => setSuggestions({ classId, models: { ...suggestions.models, [key]: event.target.value } })} />
+          </div>)}
+          <div className={styles.formActions}>
+            <button type="button" className={`${styles.btn} ${styles.btnGhost}`} onClick={() => setSuggestions(null)}>Descartar</button>
+            <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => applySuggestions(classId, suggestions.models)}>Usar estas versões</button>
+          </div>
+        </div>}
+        {classId && aiInfo?.classId === classId && <div className={styles.aiInfo}>{aiInfo.text}</div>}
         <div className={styles.field}>
           <label htmlFor={`group-${idPrefix}`}>Nome do grupo no WhatsApp</label>
           <input id={`group-${idPrefix}`} value={form.whatsappGroup} onChange={(e) => setForm({ ...form, whatsappGroup: e.target.value })} placeholder="Ex.: grupo Design" />
@@ -201,7 +265,7 @@ export default function TurmasView({ classes, loadError }: { classes: SchoolClas
 
               {editingId === item.id && (
                 <>
-                  {fields(item.id)}
+                  {fields(item.id, item.id)}
                   <div className={styles.edit} style={{ borderTop: 0, paddingTop: 0 }}>
                     {item.notes && <p className={styles.itemMeta} style={{ margin: 0 }}>{item.notes}</p>}
                     <div className={styles.formActions}>
