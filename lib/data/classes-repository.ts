@@ -7,6 +7,10 @@ export type ClassInput = {
   schedule: string | null;
   teacher: string | null;
   notes: string | null;
+  whatsappGroup: string | null;
+  noticeTemplateDirect: string | null;
+  noticeTemplateMotivational: string | null;
+  noticeTemplateImpactful: string | null;
 };
 
 export type ClassResult = { ok: boolean; error?: string };
@@ -26,6 +30,10 @@ export function classFromRow(row: Record<string, unknown>): SchoolClass {
     schedule: strOrNull(row.schedule),
     teacher: strOrNull(row.teacher),
     notes: strOrNull(row.notes),
+    whatsappGroup: strOrNull(row.whatsapp_group),
+    noticeTemplateDirect: strOrNull(row.notice_template_direct),
+    noticeTemplateMotivational: strOrNull(row.notice_template_motivational),
+    noticeTemplateImpactful: strOrNull(row.notice_template_impactful),
   };
 }
 
@@ -41,6 +49,10 @@ function toRow(input: ClassInput) {
     schedule: input.schedule?.trim() || null,
     teacher: input.teacher?.trim() || null,
     notes: input.notes?.trim() || null,
+    whatsapp_group: input.whatsappGroup?.trim() || null,
+    notice_template_direct: input.noticeTemplateDirect?.trim() || null,
+    notice_template_motivational: input.noticeTemplateMotivational?.trim() || null,
+    notice_template_impactful: input.noticeTemplateImpactful?.trim() || null,
   };
 }
 

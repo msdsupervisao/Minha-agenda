@@ -6,6 +6,7 @@ import { getBackendAiStatus } from '@/lib/assistant/backend-action-interpreter';
 import { createConversationClient, type ConversationClient, type DataProviderName } from '@/lib/assistant/conversation-client';
 import type { ActivityItem, AssistantAction, AssistantState } from '@/lib/assistant/types';
 import { buildWhatsAppHandoffUrl } from '@/lib/assistant/whatsapp-handoff';
+import type { ResolvedWeeklyNotice } from '@/lib/notices/weekly';
 import GyroCore from './GyroCore';
 import styles from './AssistantHub.module.css';
 
@@ -24,9 +25,9 @@ const labels: Record<AssistantState, string> = {
 };
 
 const quickCommands = [
-  'Gastei 30 reais agora em combustível',
-  'Mande no grupo dos pais amanhã às 9 dizendo que teremos reunião',
-  'Anota que preciso conversar com o professor sobre a turma de Designer',
+  'Aviso de Design',
+  'Aviso de Informática',
+  'Aviso de Kids',
 ];
 
 function wait(time: number) { return new Promise((resolve) => window.setTimeout(resolve, time)); }
@@ -41,6 +42,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null 
   const [menuOpen, setMenuOpen] = useState(false);
   const [providerNotice, setProviderNotice] = useState('Verificando IA…');
   const [appDeepLink, setAppDeepLink] = useState<string | null>(null);
+  const [weeklyNotice, setWeeklyNotice] = useState<ResolvedWeeklyNotice | null>(null);
   const timer = useRef<number | null>(null);
   const engine = useRef<ConversationClient | null>(null);
 
@@ -73,6 +75,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null 
     const clean = command.trim();
     if (!clean) return;
     setAppDeepLink(null);
+    setWeeklyNotice(null);
     setTranscript(clean);
     setState('processing');
     setReply('');
@@ -90,6 +93,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null 
     if (result.providerNotice) setProviderNotice(result.providerNotice);
     setRecent(result.activities);
     setPending(result.action ?? null);
+    setWeeklyNotice(result.weeklyNotice ?? null);
 
     if (result.kind === 'confirmation') {
       setState('confirmation');
@@ -115,7 +119,6 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null 
   }
 
   function startVoice() {
-    if (state === 'confirmation') return;
     const supportedWindow = window as Window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
     const Constructor = supportedWindow.SpeechRecognition || supportedWindow.webkitSpeechRecognition;
     if (!Constructor) {
@@ -218,6 +221,16 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null 
       <p className={styles.stateLabel}>{labels[state]}</p>
       {transcript && <p className={styles.transcript}>“{transcript}”</p>}
       <p className={styles.reply} role="status">{reply}</p>
+
+      {weeklyNotice && <section className={`${styles.confirmation} ${styles.noticePicker}`} aria-label={`Modelos de ${weeklyNotice.className}`}>
+        <p><b>{weeklyNotice.className}</b> · destino: {weeklyNotice.recipientName}</p>
+        <div className={styles.noticeModels}>
+          {weeklyNotice.models.map((model) => <button key={model.key} type="button" disabled={!model.body} onClick={() => void processCommand(`Carregue a mensagem de ${weeklyNotice.className} ${model.number}`, 'text')}>
+            <strong>Modelo {model.number} — {model.label}</strong>
+            <small>{model.body || 'Este modelo ainda está vazio.'}</small>
+          </button>)}
+        </div>
+      </section>}
 
       {state === 'confirmation' && pending && <div className={styles.confirmation}>
         <p><b>Para:</b> {String(pending.data.recipientName ?? 'contato')}</p><p>{String(pending.data.body ?? '')}</p>

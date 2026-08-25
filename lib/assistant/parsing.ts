@@ -46,7 +46,7 @@ export function parseDate(text: string, reference = new Date(), tz = appTimezone
     date.setUTCMonth(date.getUTCMonth() + 1, 1);
   } else {
     const weekdays: Record<string, number> = { domingo: 0, segunda: 1, terca: 2, quarta: 3, quinta: 4, sexta: 5, sabado: 6 };
-    const weekday = Object.entries(weekdays).find(([name]) => new RegExp(`\\b${name}(?:-feira)?\\b`).test(clean));
+    const weekday = Object.entries(weekdays).find(([name]) => new RegExp(`\\b${name}(?:[\\s-]?feira)?\\b`).test(clean));
     if (weekday) {
       const delta = (weekday[1] - date.getUTCDay() + 7) % 7 || 7;
       date.setUTCDate(date.getUTCDate() + delta);
@@ -79,11 +79,16 @@ export function stripRelativeDateTime(text: string) {
 }
 
 export function parseTime(text: string) {
-  const digits = normalize(text).match(/(?:as|a)\s+(\d{1,2})(?::|h)?(\d{2})?/i);
-  if (digits) return { hour: Number(digits[1]), minute: Number(digits[2] || 0) };
   const clean = normalize(text);
+  const withPeriod = (hour: number, minute: number) => {
+    if (clean.includes('da noite')) return { hour: hour === 12 ? 0 : hour < 12 ? hour + 12 : hour, minute };
+    if (clean.includes('da tarde') && hour < 12) return { hour: hour + 12, minute };
+    return { hour, minute };
+  };
+  const digits = clean.match(/(?:as|a)\s+(\d{1,2})(?::|h)?(\d{2})?/i);
+  if (digits) return withPeriod(Number(digits[1]), Number(digits[2] || 0));
   const word = Object.entries(units).find(([name, value]) => value <= 19 && new RegExp(`(?:as|a)\\s+${name}\\b`).test(clean));
-  return word ? { hour: word[1], minute: 0 } : null;
+  return word ? withPeriod(word[1], 0) : null;
 }
 
 /**

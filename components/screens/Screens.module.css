@@ -60,6 +60,12 @@
 }
 .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--blue); }
 .field textarea { resize: vertical; min-height: 70px; }
+.field .noticeTextarea { min-height: 125px; line-height: 1.45; }
+.noticeHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 6px; padding-top: 16px; border-top: 1px solid var(--line); }
+.noticeHeader strong, .noticeHeader small { display: block; }
+.noticeHeader strong { color: var(--blue); font-size: 13px; }
+.noticeHeader small { margin-top: 3px; color: rgba(255, 255, 255, .5); font-size: 11px; }
+.noticeHeader button { flex: 0 0 auto; padding: 8px 11px; font-size: 12px; }
 .grid2 { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
 .formActions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 2px; }
 .btn { border: 1px solid var(--line); border-radius: 9px; padding: 10px 16px; font-size: 14px; cursor: pointer; }
@@ -80,4 +86,8 @@
 
 @media (min-width: 900px) {
   .wrap { gap: 20px; max-width: 760px; }
+}
+
+@media (max-width: 560px) {
+  .noticeHeader { align-items: stretch; flex-direction: column; }
 }

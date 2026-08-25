@@ -9,7 +9,9 @@ const userA = '10000000-0000-4000-8000-000000000001';
 const userB = '20000000-0000-4000-8000-000000000002';
 
 const input = (name: string, extra: Partial<Record<string, string | null>> = {}) => ({
-  name, course: null, schedule: null, teacher: null, notes: null, ...extra,
+  name, course: null, schedule: null, teacher: null, notes: null,
+  whatsappGroup: null, noticeTemplateDirect: null, noticeTemplateMotivational: null, noticeTemplateImpactful: null,
+  ...extra,
 });
 
 // --- Fake Supabase com semântica de RLS (client atado a um usuário) ---
@@ -139,4 +141,27 @@ test('turmas: migration cria tabela, RLS, 4 policies e índice', () => {
   assert.match(sql, /to authenticated/i);
   assert.match(sql, /\(select auth\.uid\(\)\) = user_id/i);
   assert.match(sql, /classes_user_created_idx/i);
+});
+
+test('turmas: salva os três modelos de aviso semanal e o nome do grupo', async () => {
+  const db = new FakeClassesDb();
+  await createClass(db.client(userA), userA, input('Design', {
+    whatsappGroup: 'grupo Design',
+    noticeTemplateDirect: 'Modelo direto',
+    noticeTemplateMotivational: 'Modelo motivacional',
+    noticeTemplateImpactful: 'Modelo impactante',
+  }));
+  const [schoolClass] = await listClasses(db.client(userA), userA);
+  assert.equal(schoolClass.whatsappGroup, 'grupo Design');
+  assert.equal(schoolClass.noticeTemplateDirect, 'Modelo direto');
+  assert.equal(schoolClass.noticeTemplateMotivational, 'Modelo motivacional');
+  assert.equal(schoolClass.noticeTemplateImpactful, 'Modelo impactante');
+});
+
+test('turmas: migration semanal adiciona os três modelos sem enfraquecer a RLS existente', () => {
+  const sql = readFileSync(join(process.cwd(), 'supabase/migrations/20260825000500_phase9_weekly_notices.sql'), 'utf8');
+  for (const column of ['whatsapp_group', 'notice_template_direct', 'notice_template_motivational', 'notice_template_impactful']) {
+    assert.match(sql, new RegExp(`\\b${column}\\b`));
+  }
+  assert.match(sql, /alter table public\.classes/i);
 });

@@ -4,13 +4,37 @@ import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import type { SchoolClass } from '@/lib/assistant/types';
 import { createClassAction, deleteClassAction, updateClassAction } from '@/app/turmas/actions';
+import { defaultNoticeTemplates } from '@/lib/notices/weekly';
 import styles from './Screens.module.css';
 
-type Form = { name: string; course: string; schedule: string; teacher: string; notes: string };
-const EMPTY: Form = { name: '', course: '', schedule: '', teacher: '', notes: '' };
+type Form = {
+  name: string;
+  course: string;
+  schedule: string;
+  teacher: string;
+  notes: string;
+  whatsappGroup: string;
+  noticeTemplateDirect: string;
+  noticeTemplateMotivational: string;
+  noticeTemplateImpactful: string;
+};
+const EMPTY: Form = {
+  name: '', course: '', schedule: '', teacher: '', notes: '', whatsappGroup: '',
+  noticeTemplateDirect: '', noticeTemplateMotivational: '', noticeTemplateImpactful: '',
+};
 
 function toInput(form: Form) {
-  return { name: form.name, course: form.course || null, schedule: form.schedule || null, teacher: form.teacher || null, notes: form.notes || null };
+  return {
+    name: form.name,
+    course: form.course || null,
+    schedule: form.schedule || null,
+    teacher: form.teacher || null,
+    notes: form.notes || null,
+    whatsappGroup: form.whatsappGroup || null,
+    noticeTemplateDirect: form.noticeTemplateDirect || null,
+    noticeTemplateMotivational: form.noticeTemplateMotivational || null,
+    noticeTemplateImpactful: form.noticeTemplateImpactful || null,
+  };
 }
 
 export default function TurmasView({ classes, loadError }: { classes: SchoolClass[]; loadError?: boolean }) {
@@ -29,7 +53,17 @@ export default function TurmasView({ classes, loadError }: { classes: SchoolClas
   function openEdit(item: SchoolClass) {
     setError(null); setCreating(false); setConfirmingId(null);
     setEditingId(item.id);
-    setForm({ name: item.name, course: item.course ?? '', schedule: item.schedule ?? '', teacher: item.teacher ?? '', notes: item.notes ?? '' });
+    setForm({
+      name: item.name,
+      course: item.course ?? '',
+      schedule: item.schedule ?? '',
+      teacher: item.teacher ?? '',
+      notes: item.notes ?? '',
+      whatsappGroup: item.whatsappGroup ?? '',
+      noticeTemplateDirect: item.noticeTemplateDirect ?? '',
+      noticeTemplateMotivational: item.noticeTemplateMotivational ?? '',
+      noticeTemplateImpactful: item.noticeTemplateImpactful ?? '',
+    });
   }
 
   function create() {
@@ -82,6 +116,26 @@ export default function TurmasView({ classes, loadError }: { classes: SchoolClas
           <label htmlFor={`notes-${idPrefix}`}>Observações</label>
           <textarea id={`notes-${idPrefix}`} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
         </div>
+        <div className={styles.noticeHeader}>
+          <div><strong>Avisos semanais</strong><small>Três mensagens fixas para carregar por voz.</small></div>
+          <button type="button" className={`${styles.btn} ${styles.btnGhost}`} onClick={() => setForm({ ...form, ...defaultNoticeTemplates(form.course || form.name) })}>Gerar modelos iniciais</button>
+        </div>
+        <div className={styles.field}>
+          <label htmlFor={`group-${idPrefix}`}>Nome do grupo no WhatsApp</label>
+          <input id={`group-${idPrefix}`} value={form.whatsappGroup} onChange={(e) => setForm({ ...form, whatsappGroup: e.target.value })} placeholder="Ex.: grupo Design" />
+        </div>
+        <div className={styles.field}>
+          <label htmlFor={`direct-${idPrefix}`}><b>Modelo 1 — Direto</b></label>
+          <textarea id={`direct-${idPrefix}`} className={styles.noticeTextarea} value={form.noticeTemplateDirect} onChange={(e) => setForm({ ...form, noticeTemplateDirect: e.target.value })} placeholder="Aviso curto e objetivo" />
+        </div>
+        <div className={styles.field}>
+          <label htmlFor={`motivational-${idPrefix}`}><b>Modelo 2 — Motivacional</b></label>
+          <textarea id={`motivational-${idPrefix}`} className={styles.noticeTextarea} value={form.noticeTemplateMotivational} onChange={(e) => setForm({ ...form, noticeTemplateMotivational: e.target.value })} placeholder="Mensagem que cria expectativa" />
+        </div>
+        <div className={styles.field}>
+          <label htmlFor={`impactful-${idPrefix}`}><b>Modelo 3 — Impactante</b></label>
+          <textarea id={`impactful-${idPrefix}`} className={styles.noticeTextarea} value={form.noticeTemplateImpactful} onChange={(e) => setForm({ ...form, noticeTemplateImpactful: e.target.value })} placeholder="Mensagem que reforça a importância de não faltar" />
+        </div>
       </div>
     );
   }
@@ -125,6 +179,9 @@ export default function TurmasView({ classes, loadError }: { classes: SchoolClas
                   <span className={styles.itemTitle}>{item.name}</span>
                   <div className={styles.itemMeta}>
                     {[item.course, item.teacher, item.schedule].filter(Boolean).join(' · ') || 'sem detalhes'}
+                    {[item.noticeTemplateDirect, item.noticeTemplateMotivational, item.noticeTemplateImpactful].filter(Boolean).length > 0
+                      ? ` · ${[item.noticeTemplateDirect, item.noticeTemplateMotivational, item.noticeTemplateImpactful].filter(Boolean).length} modelos de aviso`
+                      : ''}
                   </div>
                 </div>
                 <div className={styles.itemActions}>

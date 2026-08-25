@@ -210,6 +210,23 @@ test('agendamento incompleto pergunta mensagem e horário sem perder o destinat�
   assert.equal(confirmation.action?.data.body, 'A reunião mudou de horário.');
 });
 
+test('novo horário substitui o horário antigo enquanto o agendamento aguarda confirmação', async () => {
+  const { engine } = setup();
+  const first = await engine.process('Mande no grupo dos pais amanhã às 9 dizendo que teremos reunião.', 'text');
+  assert.equal(first.kind, 'confirmation');
+  const oldDueAt = String(first.action?.data.dueAt);
+
+  const before = Date.now();
+  const updated = await engine.process('Agende essa mensagem para daqui a 10 minutos.', 'text');
+  const after = Date.now();
+  assert.equal(updated.kind, 'confirmation');
+  assert.notEqual(updated.action?.data.dueAt, oldDueAt);
+  const updatedAt = Date.parse(String(updated.action?.data.dueAt));
+  assert.ok(updatedAt >= before + 10 * 60_000);
+  assert.ok(updatedAt <= after + 10 * 60_000);
+  assert.equal(updated.action?.data.body, 'teremos reunião.');
+});
+
 test('corrige informação e desfaz a última ação reversível', async () => {
   const { engine, repository } = setup();
   await engine.process('Gastei 30 reais em combustível.', 'voice');

@@ -22,7 +22,7 @@ export default async function TurmasPage() {
   }
 
   return (
-    <AppShell title="Turmas" subtitle="Suas turmas, cursos e professores." email={ctx.email}>
+    <AppShell title="Turmas" subtitle="Suas turmas e os três modelos de aviso semanal." email={ctx.email}>
       <TurmasView classes={classes} loadError={loadError} />
     </AppShell>
   );

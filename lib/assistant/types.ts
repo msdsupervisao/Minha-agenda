@@ -83,6 +83,10 @@ export type SchoolClass = BaseEntity & {
   schedule: string | null;
   teacher: string | null;
   notes: string | null;
+  whatsappGroup: string | null;
+  noticeTemplateDirect: string | null;
+  noticeTemplateMotivational: string | null;
+  noticeTemplateImpactful: string | null;
 };
 
 export type Message = BaseEntity & {
@@ -163,6 +167,7 @@ export type EngineResult = {
   activities: ActivityItem[];
   whatsappHandoff?: import('./whatsapp-handoff').WhatsAppHandoff;
   scheduleHandoff?: import('./whatsapp-handoff').WhatsAppHandoff & { dueAt: string };
+  weeklyNotice?: import('../notices/weekly').ResolvedWeeklyNotice;
   provider?: AiProviderName;
   providerNotice?: string;
 };

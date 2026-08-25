@@ -153,7 +153,12 @@ export class ConversationEngine {
       }
       if (!dueAt || Number.isNaN(Date.parse(dueAt)) || Date.parse(dueAt) <= Date.now()) {
         this.setPending({ kind: 'scheduled_message_date', recipientName: recipient, body });
-        return this.say('question', 'Em qual dia e horário devo avisar você?', action);
+        const modelNumber = Number(action.data.noticeModelNumber);
+        const className = String(action.data.noticeClassName || '').trim();
+        const loaded = [1, 2, 3].includes(modelNumber) && className
+          ? `Carreguei a mensagem ${modelNumber} de ${className}. `
+          : '';
+        return this.say('question', `${loaded}Em qual dia e horário devo avisar você?`, action);
       }
 
       const recipientResult = await this.resolveMessageRecipient(action);
@@ -234,6 +239,20 @@ export class ConversationEngine {
       const answer = normalize(input).replace(/[.!?]+$/, '');
       if (/^(sim|certo|confirmo|pode|pode enviar|envie)$/i.test(answer)) return this.confirm(pending.action, source);
       if (/^(nao|cancela|cancelar)$/i.test(answer)) return this.cancelConfirmation();
+      if (pending.action.intent === 'schedule_whatsapp_message') {
+        const now = new Date();
+        const relativeDate = parseRelativeDateTime(input, now);
+        const date = parseDate(input, now, this.timezone);
+        if (relativeDate || date) {
+          const dueAt = relativeDate?.toISOString() || combineDateTime(date!, parseTime(input), this.timezone);
+          this.setPending(null);
+          return this.route({
+            ...pending.action,
+            id: makeId(),
+            data: { ...pending.action.data, dueAt },
+          }, source);
+        }
+      }
       return this.say('confirmation', 'Preciso que você confirme ou cancele antes de continuar.', pending.action);
     }
 
