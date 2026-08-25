@@ -157,6 +157,7 @@ export type EngineResult = {
   reply: string;
   action: AssistantAction | null;
   activities: ActivityItem[];
+  whatsappHandoff?: import('./whatsapp-handoff').WhatsAppHandoff;
   provider?: AiProviderName;
   providerNotice?: string;
 };

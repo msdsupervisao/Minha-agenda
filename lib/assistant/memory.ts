@@ -99,7 +99,11 @@ export class OperationalMemoryRepository {
       intent: log.intent,
       title: log.summary,
       createdAt: log.createdAt,
-      status: log.intent === 'prepare_whatsapp_message' ? 'mensagem preparada' : 'registrado agora',
+      status: log.intent === 'prepare_whatsapp_message'
+        ? 'mensagem preparada'
+        : log.intent === 'send_whatsapp_message'
+          ? 'aberto no WhatsApp'
+          : 'registrado agora',
     }));
   }
 

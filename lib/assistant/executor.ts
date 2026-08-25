@@ -2,8 +2,9 @@ import { OperationalMemoryRepository, makeId, normalize, rangeBounds } from './m
 import { MockWhatsAppService, type WhatsAppService } from './whatsapp-service';
 import { appTimezone } from '../data/time';
 import type { AssistantAction, CalendarEvent, Expense, Note, Reminder, Source, Task } from './types';
+import type { WhatsAppHandoff } from './whatsapp-handoff';
 
-export type ExecutionResult = { reply: string; entityId: string | null };
+export type ExecutionResult = { reply: string; entityId: string | null; whatsappHandoff?: WhatsAppHandoff };
 
 export async function executeAction(
   action: AssistantAction,
@@ -118,9 +119,15 @@ export async function executeAction(
   }
 
   if (action.intent === 'send_whatsapp_message') {
-    const message = await whatsapp.sendMessage(String(action.data.messageId));
-    repository.log({ intent: action.intent, entityType: 'message', entityId: message.id, summary: `Envio mock para ${message.recipientName}`, source, reversible: false, before: { ...message, status: 'prepared' }, after: message });
-    return { reply: `Enviei para ${message.recipientName} no modo de teste. Nenhuma mensagem real saiu do aplicativo.`, entityId: message.id };
+    const message = memory.messages.find((item) => item.id === String(action.data.messageId));
+    if (!message) throw new Error('Mensagem preparada não encontrada.');
+    const contact = memory.contacts.find((item) => item.id === message.contactId) || null;
+    const whatsappHandoff = { recipientName: message.recipientName, body: message.body, phone: contact?.phone || null };
+    repository.log({ intent: action.intent, entityType: 'message', entityId: message.id, summary: `Abrir WhatsApp para ${message.recipientName}`, source, reversible: false, before: message, after: message });
+    const reply = whatsappHandoff.phone
+      ? `A mensagem está pronta. Vou abrir a conversa com ${message.recipientName}; revise e toque em Enviar no WhatsApp.`
+      : `A mensagem está pronta. Escolha ${message.recipientName} no WhatsApp, revise e toque em Enviar.`;
+    return { reply, entityId: message.id, whatsappHandoff };
   }
 
   if (action.intent === 'correct_last_expense') {

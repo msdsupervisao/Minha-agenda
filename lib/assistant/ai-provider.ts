@@ -83,6 +83,7 @@ export function buildSystemPrompt(request: ProviderRequest) {
     'Para um gasto sem valor, mantenha create_expense e amount null. Para lembrete sem data, due_at null.',
     'Lembrete que se repete (todos os dias, toda semana/segunda, todo mês/dia X): defina recurrence = daily|weekly|monthly e due_at com a PRIMEIRA ocorrência futura no horário citado. Sem repetição, recurrence null.',
     'João e outros nomes são apenas nomes; a aplicação resolverá contatos e homônimos depois.',
+    'Em mensagens para grupos do WhatsApp, preserve o nome completo do grupo em recipient_name, incluindo a palavra grupo ou turma.',
     'requires_confirmation é informativo: a política da aplicação toma a decisão final.',
     'Use somente os intents fornecidos pelo schema. Se não houver correspondência segura, use intent null.',
   ].join('\n');

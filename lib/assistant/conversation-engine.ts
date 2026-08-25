@@ -115,6 +115,8 @@ export class ConversationEngine {
       const body = String(action.data.body || '').trim();
       if (!recipient) { this.setPending({ kind: 'message_recipient', body }); return this.say('question', 'Para quem devo preparar a mensagem?', action); }
       if (!body) { this.setPending({ kind: 'message_body', recipientName: recipient }); return this.say('question', `O que você quer dizer para ${recipient}?`, action); }
+      const recipientResult = await this.resolveMessageRecipient(action);
+      if (recipientResult) return recipientResult;
     }
 
     if (action.intent === 'send_whatsapp_message') {
@@ -146,7 +148,7 @@ export class ConversationEngine {
       this.setPending({ kind: 'confirmation', action });
       const recipient = String(action.data.recipientName || 'o contato');
       const body = String(action.data.body || '');
-      return this.say('confirmation', `Vou enviar para ${recipient}: “${body}”. Confirmar?`, action);
+      return this.say('confirmation', `Vou abrir o WhatsApp com esta mensagem para ${recipient}: “${body}”. Confirmar?`, action);
     }
     return this.run(action, source);
   }
@@ -170,6 +172,24 @@ export class ConversationEngine {
     }
     this.setPending({ kind: 'contact_identity', contactName: name, action });
     return this.say('question', `Ainda não conheço ${name}. Quem é essa pessoa?`, action);
+  }
+
+  private async resolveMessageRecipient(action: AssistantAction): Promise<EngineResult | null> {
+    const name = stringOrNull(action.data.recipientName);
+    if (!name || action.data.contactId || isGroupRecipient(name)) return null;
+    const contacts = await this.whatsapp.locateContact(name);
+    if (contacts.length === 1) {
+      action.data.contactId = contacts[0].id;
+      action.data.recipientName = contacts[0].name;
+      return null;
+    }
+    if (contacts.length > 1) {
+      this.setPending({ kind: 'contact_choice', contactIds: contacts.map((contact) => contact.id), action });
+      return this.say('question', `Encontrei ${contacts.length} pessoas chamadas ${name}. Qual delas? ${contacts.map((contact, index) => `${index + 1}, ${describeContact(contact)}`).join('; ')}.`, action);
+    }
+    // Um nome desconhecido pode ser um grupo. O WhatsApp deixará o usuário escolher
+    // o destino, então não criamos uma pessoa fictícia na agenda.
+    return null;
   }
 
   private async resume(pending: PendingQuestion, input: string, source: Source): Promise<EngineResult> {
@@ -265,19 +285,20 @@ export class ConversationEngine {
   private async run(action: AssistantAction, source: Source) {
     try {
       const executed = await executeAction(action, source, this.repository, this.whatsapp, this.timezone);
-      return this.say(isReadIntent(action.intent) ? 'query' : 'executed', executed.reply, action);
+      return this.say(isReadIntent(action.intent) ? 'query' : 'executed', executed.reply, action, executed.whatsappHandoff);
     } catch (error) {
       return this.say('error', error instanceof Error ? error.message : 'Não consegui executar essa ação.', action);
     }
   }
 
   private setPending(pending: PendingQuestion | null) { this.repository.update((memory) => { memory.pendingQuestion = pending; }); }
-  private say(kind: EngineResult['kind'], reply: string, action: AssistantAction | null) { this.repository.addTurn('assistant', reply); return this.result(kind, reply, action); }
-  private result(kind: EngineResult['kind'], reply: string, action: AssistantAction | null): EngineResult { return { kind, reply, action, activities: this.repository.activities(), provider: this.currentProvider, providerNotice: this.providerNotice }; }
+  private say(kind: EngineResult['kind'], reply: string, action: AssistantAction | null, whatsappHandoff?: EngineResult['whatsappHandoff']) { this.repository.addTurn('assistant', reply); return this.result(kind, reply, action, whatsappHandoff); }
+  private result(kind: EngineResult['kind'], reply: string, action: AssistantAction | null, whatsappHandoff?: EngineResult['whatsappHandoff']): EngineResult { return { kind, reply, action, activities: this.repository.activities(), whatsappHandoff, provider: this.currentProvider, providerNotice: this.providerNotice }; }
 }
 
-function needsContact(action: AssistantAction) { return ['create_reminder', 'create_note', 'create_task', 'create_event', 'prepare_whatsapp_message'].includes(action.intent) && Boolean(action.data.contactName || action.data.recipientName); }
+function needsContact(action: AssistantAction) { return ['create_reminder', 'create_note', 'create_task', 'create_event'].includes(action.intent) && Boolean(action.data.contactName || action.data.recipientName); }
 function isReadIntent(intent: string) { return intent.startsWith('read_') || intent.startsWith('search_'); }
 function stringOrNull(value: unknown) { return typeof value === 'string' && value.trim() ? value.trim() : null; }
 function contactFromPhrase(value: string) { return value.match(/(?:com|para)\s+([\p{L}'-]+)/iu)?.[1] || null; }
 function describeContact(contact: { name: string; role: string | null; className: string | null }) { return `${contact.name}${contact.role ? `, ${contact.role}` : ''}${contact.className ? ` de ${contact.className}` : ''}`; }
+function isGroupRecipient(value: string) { return /\b(grupo|turma)\b/iu.test(normalize(value)); }

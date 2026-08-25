@@ -137,9 +137,10 @@ test('consulta tarefas atrasadas e próximo compromisso usando dados reais', asy
   assert.match((await engine.process('Qual é meu próximo compromisso?', 'voice')).reply, /Reunião de planejamento/);
 });
 
-test('prepara WhatsApp, confirma envio mock e registra histórico', async () => {
+test('prepara WhatsApp e entrega o rascunho ao navegador sem fingir que enviou', async () => {
   const { engine, repository } = setup();
-  repository.createContact('João', 'Professor de Designer');
+  const contact = repository.createContact('João', 'Professor de Designer');
+  repository.update((memory) => { memory.contacts.find((item) => item.id === contact.id)!.phone = '(65) 99999-0000'; });
   const prepared = await engine.process('Prepare uma mensagem para João dizendo que amanhã tem aula.', 'voice');
   assert.equal(prepared.kind, 'executed');
   assert.equal(repository.read().messages[0].status, 'prepared');
@@ -151,10 +152,23 @@ test('prepara WhatsApp, confirma envio mock e registra histórico', async () => 
 
   const sent = await engine.process('Certo.', 'voice');
   assert.equal(sent.kind, 'executed');
-  assert.equal(repository.read().messages[0].status, 'mock_sent');
-  assert.match(sent.reply, /modo de teste/);
-  assert.match((await engine.process('Quem estou esperando responder?', 'voice')).reply, /João/);
+  assert.equal(repository.read().messages[0].status, 'prepared');
+  assert.deepEqual(sent.whatsappHandoff, { recipientName: 'João', body: 'amanhã tem aula.', phone: '(65) 99999-0000' });
+  assert.match(sent.reply, /toque em Enviar no WhatsApp/);
   assert.ok(repository.read().actionLogs.some((log) => log.intent === 'send_whatsapp_message'));
+});
+
+test('mensagem para grupo desconhecido abre o seletor do WhatsApp sem criar contato fictício', async () => {
+  const { engine, repository } = setup();
+  const confirmation = await engine.process('Mande no grupo dos pais dizendo que amanhã não tem aula.', 'voice');
+  assert.equal(confirmation.kind, 'confirmation');
+  assert.equal(repository.read().contacts.length, 0);
+
+  const opened = await engine.process('Sim.', 'voice');
+  assert.equal(opened.kind, 'executed');
+  assert.deepEqual(opened.whatsappHandoff, { recipientName: 'grupo dos pais', body: 'amanhã não tem aula.', phone: null });
+  assert.equal(repository.read().messages[0].status, 'prepared');
+  assert.match(opened.reply, /Escolha grupo dos pais no WhatsApp/);
 });
 
 test('corrige informação e desfaz a última ação reversível', async () => {

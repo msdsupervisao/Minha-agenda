@@ -32,14 +32,14 @@ export function interpretCommand(input: string, now = new Date(), tz = appTimezo
   if (/^(quem|qual)\s+(?:e|é)?\s*[\p{L}]+/u.test(clean)) return action('search_contact', 'Localizar pessoa', '', { name: text.replace(/^(quem|qual)\s+(?:é|e)?\s*/i, '').replace(/[?!.]/g, '').trim() });
 
   if (/^(prepare|prepara|rascunhe|rascunha)\b/.test(clean) && /mensagem/.test(clean)) {
-    const recipient = cleanRecipient(text.match(/(?:para|pro|pra)\s+(.+?)(?=\s+(?:dizendo|avisando|que)\b|\s*[:,]|$)/i)?.[1] || '');
-    const body = text.match(/(?:dizendo|avisando)\s+(?:que\s+)?(.+)$/i)?.[1]?.trim() || text.match(/:\s*(.+)$/)?.[1]?.trim() || '';
+    const recipient = messageRecipient(text);
+    const body = messageBody(text);
     return action('prepare_whatsapp_message', `Mensagem para ${recipient || 'contato'}`, '', { recipientName: recipient, body });
   }
 
   if (/^(envie|manda|mande)\b/.test(clean)) {
-    const recipient = cleanRecipient(text.match(/(?:para|pro|pra)\s+(.+?)(?=\s+(?:dizendo|avisando|que)\b|\s*[:,]|$)/i)?.[1] || '');
-    const body = text.match(/(?:dizendo|avisando)\s+(?:que\s+)?(.+)$/i)?.[1]?.trim() || text.match(/:\s*(.+)$/)?.[1]?.trim() || '';
+    const recipient = messageRecipient(text);
+    const body = messageBody(text);
     return action('send_whatsapp_message', `Enviar mensagem${recipient ? ` para ${recipient}` : ''}`, '', { recipientName: recipient, body }, true);
   }
 
@@ -104,4 +104,15 @@ export function cleanContactDescription(text: string) {
 
 function cleanRecipient(value: string) {
   return value.trim().replace(/^(?:o|a)\s+/i, '').trim();
+}
+
+function messageRecipient(text: string) {
+  return cleanRecipient(text.match(/(?:para|pro|pra|no|na|ao|à)\s+(.+?)(?=\s+(?:dizendo|avisando|que)\b|\s*[:,]|$)/i)?.[1] || '');
+}
+
+function messageBody(text: string) {
+  return text.match(/(?:dizendo|avisando)\s+(?:que\s+)?(.+)$/i)?.[1]?.trim()
+    || text.match(/\s+que\s+(.+)$/i)?.[1]?.trim()
+    || text.match(/:\s*(.+)$/)?.[1]?.trim()
+    || '';
 }

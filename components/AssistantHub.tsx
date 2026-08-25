@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useRef, useState } from 'react';
 import { getBackendAiStatus } from '@/lib/assistant/backend-action-interpreter';
 import { createConversationClient, type ConversationClient, type DataProviderName } from '@/lib/assistant/conversation-client';
 import type { ActivityItem, AssistantAction, AssistantState } from '@/lib/assistant/types';
+import { buildWhatsAppHandoffUrl } from '@/lib/assistant/whatsapp-handoff';
 import GyroCore from './GyroCore';
 import styles from './AssistantHub.module.css';
 
@@ -152,6 +153,10 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null 
       return;
     }
     finish(result.reply);
+    if (result.whatsappHandoff) {
+      const url = buildWhatsAppHandoffUrl(result.whatsappHandoff);
+      window.setTimeout(() => window.location.assign(url), 350);
+    }
   }
 
   async function cancelConfirmation() {
@@ -196,7 +201,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null 
 
       {state === 'confirmation' && pending && <div className={styles.confirmation}>
         <p><b>Para:</b> {String(pending.data.recipientName ?? 'contato')}</p><p>{String(pending.data.body ?? '')}</p>
-        <div><button type="button" className={styles.secondary} onClick={() => void cancelConfirmation()}>Cancelar</button><button type="button" className={styles.primary} onClick={() => void confirm()}>Confirmar</button></div>
+        <div><button type="button" className={styles.secondary} onClick={() => void cancelConfirmation()}>Cancelar</button><button type="button" className={styles.primary} onClick={() => void confirm()}>Abrir WhatsApp</button></div>
       </div>}
 
       <form className={styles.commandForm} onSubmit={submit}>

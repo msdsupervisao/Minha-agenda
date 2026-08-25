@@ -159,6 +159,10 @@ test('fallback local cobre as frases portuguesas novas', () => {
   assert.equal(interpretCommand('Quem estou esperando responder?', now)?.intent, 'search_memory');
   assert.equal(interpretCommand('Anota que preciso conversar com o professor de Designer.', now)?.intent, 'create_note');
   assert.equal(interpretCommand('Prepare uma mensagem para o João dizendo que amanhã tem aula.', now)?.intent, 'prepare_whatsapp_message');
+  const groupMessage = interpretCommand('Mande no grupo dos pais dizendo que amanhã não tem aula.', now)!;
+  assert.equal(groupMessage.intent, 'send_whatsapp_message');
+  assert.equal(groupMessage.data.recipientName, 'grupo dos pais');
+  assert.equal(groupMessage.data.body, 'amanhã não tem aula.');
   assert.equal(interpretCommand('Desfaz isso.', now)?.intent, 'undo_last_action');
 });
 
