@@ -37,6 +37,7 @@ test('reconhece atalhos de aviso e de carregamento de mensagem', () => {
   assert.equal(isWeeklyNoticeCommand('Aviso de Design'), true);
   assert.equal(isWeeklyNoticeCommand('Carregue a mensagem de Designer 2'), true);
   assert.equal(isWeeklyNoticeCommand('mensagem de Kids Tecnologia dois'), true);
+  assert.equal(isWeeklyNoticeCommand('designer gráfico modelo 2 hoje às 19 horas'), true);
   assert.equal(isWeeklyNoticeCommand('aviso importante'), false);
 });
 
@@ -53,6 +54,10 @@ test('resolve Design, Informática e Kids para a turma e os três textos salvos'
   assert.equal(design?.className, 'Designer Gráfico');
   assert.equal(design?.recipientName, 'grupo Design');
   assert.equal(design?.models[1].body, 'Designer Gráfico: motivacional');
+
+  const designNatural = resolveWeeklyNotice(classes, 'designer gráfico modelo 2 hoje às 19 horas');
+  assert.equal(designNatural?.className, 'Designer Gráfico');
+  assert.equal(designNatural?.models[1].body, 'Designer Gráfico: motivacional');
 
   assert.equal(resolveWeeklyNotice(classes, 'Aviso de informática')?.className, 'Informática');
   assert.equal(resolveWeeklyNotice(classes, 'Mensagem de kids tecnologia 2')?.className, 'Kids Tecnologia');

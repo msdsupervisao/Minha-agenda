@@ -8,6 +8,8 @@ function action(intent: AssistantAction['intent'], title: string, summary: strin
   return { id: makeId(), intent, title, summary, data, requiresConfirmation };
 }
 
+const REMINDER_COMMAND = /^(?:(?:agende|agenda|crie)\s+(?:um\s+)?lembrete|(?:me\s+)?lembr[ea](?:-me)?)\b/;
+
 export function interpretCommand(input: string, now = new Date(), tz = appTimezone()): AssistantAction | null {
   const text = input.trim();
   const clean = normalize(text);
@@ -64,15 +66,15 @@ export function interpretCommand(input: string, now = new Date(), tz = appTimezo
     return action('create_expense', `Gasto em ${category}`, '', { amount, currency: 'BRL', category, occurredAt: now.toISOString() });
   }
 
-  if (/^(?:me\s+)?lembr[ea](?:-me)?\b/.test(clean)) {
+  if (REMINDER_COMMAND.test(clean)) {
     const relative = parseRelativeDateTime(text, now);
     const recurrence = parseRecurrence(text);
     const date = parseDate(text, now, tz);
     const time = parseTime(text);
-    let title = stripRecurrence(stripRelativeDateTime(text.replace(/^(?:me\s+)?lembr[ea](?:-me)?(?:\s+de)?\s*/i, '')))
+    let title = stripRecurrence(stripRelativeDateTime(text.replace(/^(?:(?:agende|agenda|crie)\s+(?:um\s+)?lembrete|(?:me\s+)?lembr[ea](?:-me)?)(?:\s+de)?\s*/i, '')))
       .replace(/(?:depois\s+de\s+amanhã|depois\s+de\s+amanha|amanhã|amanha|hoje|semana\s+que\s+vem|próxima\s+semana|proxima\s+semana|mês\s+que\s+vem|mes\s+que\s+vem|próximo\s+mês|proximo\s+mes)/gi, '')
       .replace(/\b(?:domingo|segunda(?:-feira)?|terça(?:-feira)?|terca(?:-feira)?|quarta(?:-feira)?|quinta(?:-feira)?|sexta(?:-feira)?|sábado|sabado)\b/gi, '')
-      .replace(/(?:^|\s)(?:(?:às|as)\s+(?:\d{1,2}(?:[:h]\d{2}|h)?|uma|duas|três|tres|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|catorze|quatorze|quinze|dezesseis|dezessete|dezoito|dezenove|vinte)|a\s+\d{1,2}(?:[:h]\d{2}|h)?)(?=\s|$)/giu, ' ').trim().replace(/^de\s+/i, '').replace(/[,;.!?]+$/, '').trim();
+      .replace(/(?:^|\s)(?:(?:às|as)\s+(?:\d{1,2}(?:[:h]\d{2}|h)?|uma|duas|três|tres|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|treze|catorze|quatorze|quinze|dezesseis|dezessete|dezoito|dezenove|vinte)|a\s+\d{1,2}(?:[:h]\d{2}|h)?)(?=\s|$)/giu, ' ').trim().replace(/^de\s+/i, '').replace(/\bpara\s*$/i, '').replace(/[,;.!?]+$/, '').trim();
     const contactName = contactNameFrom(title);
     if (/^(hoje|amanh[ãa])$/i.test(title)) title = '';
     const requiresMessageDetail = /^mandar\s+(?:uma\s+)?mensagem\s+(?:para|pro|pra)\s+[\p{L}'-]+\s*$/iu.test(title);

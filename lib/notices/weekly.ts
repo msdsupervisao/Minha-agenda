@@ -18,10 +18,15 @@ export type ResolvedWeeklyNotice = {
 };
 
 const COMMAND_PREFIX = /^(?:carregue\s+)?(?:o\s+|a\s+)?(?:avisos?|mensage(?:m|ns))\s+(?:de|da|do)\s+/iu;
+const EXPLICIT_MODEL = /\bmodelo\s+(?:1|2|3|um|uma|dois|duas|tres)\b/u;
 const WHEN_WORD = /\b(?:hoje|amanha|domingo|segunda|terca|quarta|quinta|sexta|sabado)\b/u;
 
 export function isWeeklyNoticeCommand(input: string) {
-  return COMMAND_PREFIX.test(normalize(input.trim()));
+  const clean = normalize(input.trim());
+  // Na conversa natural o usuário costuma dizer primeiro o curso, por exemplo
+  // "Designer Gráfico modelo 2 hoje às 19h". O número explícito do modelo é
+  // suficiente para distinguir esse atalho de um lembrete ou evento comum.
+  return COMMAND_PREFIX.test(clean) || EXPLICIT_MODEL.test(clean);
 }
 
 export function requestedNoticeModelNumber(input: string): 1 | 2 | 3 | null {

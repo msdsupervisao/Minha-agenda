@@ -166,6 +166,14 @@ test('fallback local cobre as frases portuguesas novas', () => {
   assert.equal(interpretCommand('Desfaz isso.', now)?.intent, 'undo_last_action');
 });
 
+test('"agende um lembrete" cria lembrete, não evento', () => {
+  const now = new Date('2026-08-25T22:53:00.000Z');
+  const reminder = interpretCommand('Agende um lembrete de designer gráfico para hoje às 19h', now, 'America/Cuiaba');
+  assert.equal(reminder?.intent, 'create_reminder');
+  assert.equal(reminder?.data.title, 'designer gráfico');
+  assert.equal(reminder?.data.dueAt, '2026-08-25T23:00:00.000Z');
+});
+
 test('nomes duplicados continuam sendo resolvidos fora do modelo', async () => {
   const repository = new OperationalMemoryRepository(new TestStorage());
   repository.createContact('João', 'Professor de Designer');
