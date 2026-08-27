@@ -181,6 +181,7 @@ class MemoryScheduleStore implements ScheduleHandoffStore {
       status: 'awaiting_device',
       code: 'A'.repeat(22),
       ...draft,
+      dueAt: draft.dueAt.replace('.000Z', '+00:00'),
     };
     this.rows.push(row);
     return row;

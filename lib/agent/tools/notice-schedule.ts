@@ -128,7 +128,7 @@ export function createNoticeScheduleTools(
         && stored.status === 'awaiting_device'
         && stored.recipientName === input.recipientName
         && stored.body === input.body
-        && stored.dueAt === expectedDueAt);
+        && sameInstant(stored.dueAt, expectedDueAt));
       return { verified, evidence: stored as unknown as JsonValue };
     },
   }, {
@@ -175,4 +175,10 @@ function formatDueAt(value: string, timezone: string) {
 
 function localDueAtToUtcIso(value: string, timezone: string) {
   return wallTimeToUtcIso(value, timezone);
+}
+
+function sameInstant(left: string, right: string) {
+  const leftTime = Date.parse(left);
+  const rightTime = Date.parse(right);
+  return Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime === rightTime;
 }
