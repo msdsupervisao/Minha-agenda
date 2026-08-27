@@ -107,6 +107,22 @@ async function ensureNotificationPermission(): Promise<boolean> {
   return asked.display === 'granted';
 }
 
+async function ensureNotificationChannel() {
+  try {
+    await LocalNotifications.createChannel({
+      id: 'schedule',
+      name: 'Agendamentos',
+      description: 'Avisos de mensagens agendadas',
+      importance: 5,
+      visibility: 1,
+      sound: 'default',
+      vibration: true,
+    });
+  } catch {
+    // Channel APIs are unavailable on older Android versions.
+  }
+}
+
 async function scheduleLocal(handoff: Handoff, code: string) {
   const when = new Date(handoff.dueAt);
   if (!Number.isFinite(when.getTime()) || when.getTime() <= Date.now()) {
@@ -118,12 +134,14 @@ async function scheduleLocal(handoff: Handoff, code: string) {
   // O mesmo código sempre produz o mesmo ID. Reabrir o deep link substitui o
   // agendamento anterior em vez de criar notificações duplicadas.
   const id = notificationIdForScheduleCode(code);
+  await ensureNotificationChannel();
   const result = await LocalNotifications.schedule({
     notifications: [{
       id,
       title: handoff.recipientName ? `Mensagem para ${handoff.recipientName}` : 'Mensagem agendada',
       // Evita mostrar a mensagem inteira na tela bloqueada.
       body: 'Toque para preparar o envio no WhatsApp.',
+      channelId: 'schedule',
       // Exato quando o SO permite; aproximado (Doze) como alternativa.
       schedule: {
         at: when,
