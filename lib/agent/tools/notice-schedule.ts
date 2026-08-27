@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { z } from 'zod';
+import { wallTimeToUtcIso } from '@/lib/data/time';
 import {
   buildScheduleDeepLinks,
   createScheduleHandoffCode,
@@ -78,15 +79,18 @@ export function createNoticeScheduleTools(
       modelNumber: z.number().int().min(1).max(3),
       recipientName: z.string().trim().min(1).max(200),
       body: z.string().trim().min(1).max(4000),
-      dueAt: z.string().datetime(),
+      localDueAt: z.string()
+        .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)
+        .describe('Data e hora locais no fuso do usuário, no formato YYYY-MM-DDTHH:mm, sem Z nem offset.'),
     }).strict(),
     approvalMessage(input, context) {
       const body = String(input.body);
       const preview = body.length > 220 ? `${body.slice(0, 217)}…` : body;
-      return `Confirmar o agendamento para ${input.recipientName}, em ${formatDueAt(String(input.dueAt), context.timezone)}? “${preview}”`;
+      const dueAt = localDueAtToUtcIso(String(input.localDueAt), context.timezone);
+      return `Confirmar o agendamento para ${input.recipientName}, em ${formatDueAt(dueAt, context.timezone)}? “${preview}”`;
     },
     async execute(input, context) {
-      const dueAt = String(input.dueAt);
+      const dueAt = localDueAtToUtcIso(String(input.localDueAt), context.timezone);
       const dueAtIssue = scheduleDueAtIssue(dueAt, context.now.getTime());
       if (dueAtIssue) return notCreated('invalid_due_at', dueAtIssue);
 
@@ -118,12 +122,13 @@ export function createNoticeScheduleTools(
       if (result.created !== true || typeof result.handoffId !== 'string') {
         return { verified: true, evidence: output };
       }
+      const expectedDueAt = localDueAtToUtcIso(String(input.localDueAt), context.timezone);
       const stored = await store.find(result.handoffId, context);
       const verified = Boolean(stored
         && stored.status === 'awaiting_device'
         && stored.recipientName === input.recipientName
         && stored.body === input.body
-        && stored.dueAt === input.dueAt);
+        && stored.dueAt === expectedDueAt);
       return { verified, evidence: stored as unknown as JsonValue };
     },
   }, {
@@ -166,4 +171,8 @@ function formatDueAt(value: string, timezone: string) {
   } catch {
     return value;
   }
+}
+
+function localDueAtToUtcIso(value: string, timezone: string) {
+  return wallTimeToUtcIso(value, timezone);
 }

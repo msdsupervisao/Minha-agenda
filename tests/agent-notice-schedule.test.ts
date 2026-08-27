@@ -46,7 +46,7 @@ test('modelo 2 de Design só cria handoff depois da aprovação exata', async ()
       modelNumber: 2,
       recipientName: design.whatsappGroup!,
       body: design.noticeTemplateMotivational!,
-      dueAt: '2026-08-28T00:30:00.000Z',
+      localDueAt: '2026-08-28T18:00',
     },
   };
 
@@ -54,6 +54,7 @@ test('modelo 2 de Design só cria handoff depois da aprovação exata', async ()
   assert.equal(pending.status, 'approval_required');
   assert.match(pending.approvalMessage || '', /Design Gráfico — Turma/);
   assert.match(pending.approvalMessage || '', /criatividade começa aqui/);
+  assert.match(pending.approvalMessage || '', /28\/08\/2026, 18:00/);
   assert.equal(store.rows.length, 0);
 
   const executed = await registry.execute(call, context, new Set([call.callId]));
@@ -64,6 +65,7 @@ test('modelo 2 de Design só cria handoff depois da aprovação exata', async ()
   assert.equal(output.status, 'awaiting_device');
   assert.equal(output.recipientName, 'Design Gráfico — Turma');
   assert.equal(output.body, design.noticeTemplateMotivational);
+  assert.equal(output.dueAt, '2026-08-28T22:00:00.000Z');
   assert.match(String(output.androidIntent), /^intent:\/\/schedule/);
 });
 
@@ -78,7 +80,7 @@ test('ferramenta recusa corpo ou destinatário que não vieram da turma real', a
       modelNumber: 2,
       recipientName: 'aqueles tecnologia',
       body: 'mensagem inventada',
-      dueAt: '2026-08-28T00:30:00.000Z',
+      localDueAt: '2026-08-27T20:30',
     },
   };
   const result = await registry.execute(call, context, new Set([call.callId]));
@@ -104,7 +106,7 @@ test('horário passado nunca produz handoff, mesmo depois de aprovado', async ()
       modelNumber: 2,
       recipientName: design.whatsappGroup!,
       body: design.noticeTemplateMotivational!,
-      dueAt: '2026-08-26T23:59:00.000Z',
+      localDueAt: '2026-08-26T19:59',
     },
   };
   const result = await registry.execute(call, context, new Set([call.callId]));
@@ -115,6 +117,25 @@ test('horário passado nunca produz handoff, mesmo depois de aprovado', async ()
     errorCode: 'invalid_due_at',
     message: 'Escolha um horário futuro.',
   });
+  assert.equal(store.rows.length, 0);
+});
+
+test('horário local com Z é rejeitado para impedir deslocamento silencioso de fuso', async () => {
+  const store = new MemoryScheduleStore();
+  const registry = new ToolRegistry(createNoticeScheduleTools(catalog, store));
+  const result = await registry.execute({
+    callId: 'schedule-offset',
+    name: 'prepare_notice_schedule',
+    arguments: {
+      classId: design.id,
+      modelNumber: 2,
+      recipientName: design.whatsappGroup!,
+      body: design.noticeTemplateMotivational!,
+      localDueAt: '2026-08-28T18:00:00Z',
+    },
+  }, context, new Set(['schedule-offset']));
+  assert.equal(result.status, 'error');
+  assert.equal(result.errorCode, 'invalid_arguments');
   assert.equal(store.rows.length, 0);
 });
 
