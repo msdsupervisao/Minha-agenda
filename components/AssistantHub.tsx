@@ -8,6 +8,7 @@ import type { ActivityItem, AssistantAction, AssistantState } from '@/lib/assist
 import { buildWhatsAppHandoffUrl } from '@/lib/assistant/whatsapp-handoff';
 import type { ResolvedWeeklyNotice } from '@/lib/notices/weekly';
 import { sendAgentTurn, verifiedScheduleHandoff, type AgentClientResult } from '@/lib/agent/client';
+import { selectPortugueseVoice, speechTextForReply } from '@/lib/assistant/speech';
 import GyroCore from './GyroCore';
 import styles from './AssistantHub.module.css';
 
@@ -59,11 +60,15 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
 
   function speak(text: string) {
     if (!('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
+    const synthesis = window.speechSynthesis;
+    synthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'pt-BR';
-    utterance.rate = 1.05;
-    window.speechSynthesis.speak(utterance);
+    utterance.rate = 1.3;
+    utterance.pitch = 1;
+    const voice = selectPortugueseVoice(synthesis.getVoices());
+    if (voice) utterance.voice = voice;
+    synthesis.speak(utterance);
   }
 
   function finish(text: string) {
@@ -112,7 +117,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
     if (result.kind === 'confirmation') {
       setState('confirmation');
       setReply(result.reply);
-      speak(result.reply);
+      speak(speechTextForReply(result.reply));
       return;
     }
     if (result.kind === 'error') {
@@ -216,7 +221,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
       setAgentApprovalId(result.approvalId);
       setState('confirmation');
       setReply(result.reply);
-      speak(result.reply);
+      speak(speechTextForReply(result.reply));
       return;
     }
     if (result.kind === 'cancelled') {
