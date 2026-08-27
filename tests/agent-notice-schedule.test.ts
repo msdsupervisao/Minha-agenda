@@ -46,7 +46,9 @@ test('modelo 2 de Design só cria handoff depois da aprovação exata', async ()
       modelNumber: 2,
       recipientName: design.whatsappGroup!,
       body: design.noticeTemplateMotivational!,
+      scheduleKind: 'local_datetime',
       localDueAt: '2026-08-28T18:00',
+      delayMinutes: null,
     },
   };
 
@@ -69,6 +71,34 @@ test('modelo 2 de Design só cria handoff depois da aprovação exata', async ()
   assert.match(String(output.androidIntent), /^intent:\/\/schedule/);
 });
 
+test('“daqui 10 minutos” soma no instante atual sem confundir UTC com hora local', async () => {
+  const relativeContext = { ...context, now: new Date('2026-08-27T19:00:00.000Z') };
+  const store = new MemoryScheduleStore();
+  const registry = new ToolRegistry(createNoticeScheduleTools(catalog, store));
+  const call = {
+    callId: 'schedule-relative-10',
+    name: 'prepare_notice_schedule',
+    arguments: {
+      classId: design.id,
+      modelNumber: 2,
+      recipientName: design.whatsappGroup!,
+      body: design.noticeTemplateMotivational!,
+      scheduleKind: 'delay_minutes',
+      localDueAt: null,
+      delayMinutes: 10,
+    },
+  };
+
+  const pending = await registry.execute(call, relativeContext);
+  assert.equal(pending.status, 'approval_required');
+  assert.match(pending.approvalMessage || '', /27\/08\/2026, 15:10/);
+
+  const executed = await registry.execute(call, relativeContext, new Set([call.callId]));
+  assert.equal(executed.status, 'success');
+  assert.equal(executed.verified, true);
+  assert.equal((executed.output as Record<string, unknown>).dueAt, '2026-08-27T19:10:00.000Z');
+});
+
 test('ferramenta recusa corpo ou destinatário que não vieram da turma real', async () => {
   const store = new MemoryScheduleStore();
   const registry = new ToolRegistry(createNoticeScheduleTools(catalog, store));
@@ -80,7 +110,9 @@ test('ferramenta recusa corpo ou destinatário que não vieram da turma real', a
       modelNumber: 2,
       recipientName: 'aqueles tecnologia',
       body: 'mensagem inventada',
+      scheduleKind: 'local_datetime',
       localDueAt: '2026-08-27T20:30',
+      delayMinutes: null,
     },
   };
   const result = await registry.execute(call, context, new Set([call.callId]));
@@ -106,7 +138,9 @@ test('horário passado nunca produz handoff, mesmo depois de aprovado', async ()
       modelNumber: 2,
       recipientName: design.whatsappGroup!,
       body: design.noticeTemplateMotivational!,
+      scheduleKind: 'local_datetime',
       localDueAt: '2026-08-26T19:59',
+      delayMinutes: null,
     },
   };
   const result = await registry.execute(call, context, new Set([call.callId]));
@@ -131,7 +165,9 @@ test('horário local com Z é rejeitado para impedir deslocamento silencioso de 
       modelNumber: 2,
       recipientName: design.whatsappGroup!,
       body: design.noticeTemplateMotivational!,
+      scheduleKind: 'local_datetime',
       localDueAt: '2026-08-28T18:00:00Z',
+      delayMinutes: null,
     },
   }, context, new Set(['schedule-offset']));
   assert.equal(result.status, 'error');

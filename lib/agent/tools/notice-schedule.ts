@@ -72,25 +72,33 @@ export function createNoticeScheduleTools(
 ): AgentTool<JsonObject>[] {
   return [{
     name: 'prepare_notice_schedule',
-    description: 'Depois da confirmação, cria um handoff para o celular com aviso de uma turma real. Isso ainda NÃO significa que o celular agendou: status awaiting_device exige abrir o app e aguardar o ACK.',
+    description: 'Depois da confirmação, cria um handoff para o celular com aviso de uma turma real. Para “daqui a N minutos/horas”, use scheduleKind=delay_minutes; para data e hora de calendário, use scheduleKind=local_datetime. Isso ainda NÃO significa que o celular agendou: status awaiting_device exige abrir o app e aguardar o ACK.',
     risk: 'external',
     inputSchema: z.object({
       classId: z.string().uuid(),
       modelNumber: z.number().int().min(1).max(3),
       recipientName: z.string().trim().min(1).max(200),
       body: z.string().trim().min(1).max(4000),
+      scheduleKind: z.enum(['local_datetime', 'delay_minutes']),
       localDueAt: z.string()
         .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)
-        .describe('Data e hora locais no fuso do usuário, no formato YYYY-MM-DDTHH:mm, sem Z nem offset.'),
-    }).strict(),
+        .nullable()
+        .describe('Para local_datetime: data e hora locais no formato YYYY-MM-DDTHH:mm, sem Z nem offset. Para delay_minutes: null.'),
+      delayMinutes: z.number().int().min(1).max(525_600).nullable()
+        .describe('Para delay_minutes: total de minutos a partir do instante atual. Para local_datetime: null.'),
+    }).strict().superRefine((value, issue) => {
+      const validLocal = value.scheduleKind === 'local_datetime' && value.localDueAt !== null && value.delayMinutes === null;
+      const validDelay = value.scheduleKind === 'delay_minutes' && value.localDueAt === null && value.delayMinutes !== null;
+      if (!validLocal && !validDelay) issue.addIssue({ code: 'custom', message: 'Combinação de horário inválida.' });
+    }),
     approvalMessage(input, context) {
       const body = String(input.body);
       const preview = body.length > 220 ? `${body.slice(0, 217)}…` : body;
-      const dueAt = localDueAtToUtcIso(String(input.localDueAt), context.timezone);
+      const dueAt = resolveScheduleDueAt(input, context.now, context.timezone);
       return `Confirmar o agendamento para ${input.recipientName}, em ${formatDueAt(dueAt, context.timezone)}? “${preview}”`;
     },
     async execute(input, context) {
-      const dueAt = localDueAtToUtcIso(String(input.localDueAt), context.timezone);
+      const dueAt = resolveScheduleDueAt(input, context.now, context.timezone);
       const dueAtIssue = scheduleDueAtIssue(dueAt, context.now.getTime());
       if (dueAtIssue) return notCreated('invalid_due_at', dueAtIssue);
 
@@ -122,7 +130,7 @@ export function createNoticeScheduleTools(
       if (result.created !== true || typeof result.handoffId !== 'string') {
         return { verified: true, evidence: output };
       }
-      const expectedDueAt = localDueAtToUtcIso(String(input.localDueAt), context.timezone);
+      const expectedDueAt = resolveScheduleDueAt(input, context.now, context.timezone);
       const stored = await store.find(result.handoffId, context);
       const verified = Boolean(stored
         && stored.status === 'awaiting_device'
@@ -175,6 +183,16 @@ function formatDueAt(value: string, timezone: string) {
 
 function localDueAtToUtcIso(value: string, timezone: string) {
   return wallTimeToUtcIso(value, timezone);
+}
+
+function resolveScheduleDueAt(input: JsonObject, now: Date, timezone: string) {
+  if (input.scheduleKind === 'delay_minutes' && typeof input.delayMinutes === 'number') {
+    return new Date(now.getTime() + input.delayMinutes * 60_000).toISOString();
+  }
+  if (input.scheduleKind === 'local_datetime' && typeof input.localDueAt === 'string') {
+    return localDueAtToUtcIso(input.localDueAt, timezone);
+  }
+  return notCreated('invalid_due_at', 'O horário informado é inválido.');
 }
 
 function sameInstant(left: string, right: string) {

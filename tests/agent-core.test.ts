@@ -216,6 +216,8 @@ test('instruções centrais exigem intenção, ferramentas e verificação', () 
   assert.match(prompt, /intenção, o contexto e o objetivo/);
   assert.match(prompt, /Use ferramentas/);
   assert.match(prompt, /verified=true/);
+  assert.match(prompt, /Hora local atual: 2026-08-26T20:30:00/);
+  assert.match(prompt, /scheduleKind=delay_minutes/);
   assert.match(prompt, /<contexto_atual>/);
   assert.doesNotMatch(prompt, /comando exato/);
 });
