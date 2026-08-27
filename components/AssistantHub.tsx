@@ -7,6 +7,7 @@ import { createConversationClient, type ConversationClient, type DataProviderNam
 import type { ActivityItem, AssistantAction, AssistantState } from '@/lib/assistant/types';
 import { buildWhatsAppHandoffUrl } from '@/lib/assistant/whatsapp-handoff';
 import type { ResolvedWeeklyNotice } from '@/lib/notices/weekly';
+import { sendAgentTurn, verifiedScheduleHandoff, type AgentClientResult } from '@/lib/agent/client';
 import GyroCore from './GyroCore';
 import styles from './AssistantHub.module.css';
 
@@ -32,7 +33,7 @@ const quickCommands = [
 
 function wait(time: number) { return new Promise((resolve) => window.setTimeout(resolve, time)); }
 
-export default function AssistantHub({ dataProvider = 'local', userEmail = null }: { dataProvider?: DataProviderName; userEmail?: string | null }) {
+export default function AssistantHub({ dataProvider = 'local', userEmail = null, agentPilot = false }: { dataProvider?: DataProviderName; userEmail?: string | null; agentPilot?: boolean }) {
   const [state, setState] = useState<AssistantState>('idle');
   const [transcript, setTranscript] = useState('');
   const [input, setInput] = useState('');
@@ -40,19 +41,21 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null 
   const [pending, setPending] = useState<AssistantAction | null>(null);
   const [recent, setRecent] = useState<ActivityItem[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [providerNotice, setProviderNotice] = useState('Verificando IA…');
+  const [providerNotice, setProviderNotice] = useState(agentPilot ? 'Núcleo agentic em piloto.' : 'Verificando IA…');
   const [appDeepLink, setAppDeepLink] = useState<string | null>(null);
   const [weeklyNotice, setWeeklyNotice] = useState<ResolvedWeeklyNotice | null>(null);
+  const [agentApprovalId, setAgentApprovalId] = useState<string | null>(null);
   const timer = useRef<number | null>(null);
+  const scheduleWatch = useRef(0);
   const engine = useRef<ConversationClient | null>(null);
 
   useEffect(() => {
     const assistant = createConversationClient(dataProvider);
     engine.current = assistant;
     void assistant.activities().then(setRecent).catch(() => setReply('Não consegui carregar suas ações recentes.'));
-    void getBackendAiStatus().then((status) => setProviderNotice(status.notice)).catch(() => setProviderNotice('Modo indisponível.'));
+    if (!agentPilot) void getBackendAiStatus().then((status) => setProviderNotice(status.notice)).catch(() => setProviderNotice('Modo indisponível.'));
     return () => { if (timer.current) window.clearTimeout(timer.current); };
-  }, [dataProvider]);
+  }, [agentPilot, dataProvider]);
 
   function speak(text: string) {
     if (!('speechSynthesis' in window)) return;
@@ -74,12 +77,23 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null 
   async function processCommand(command: string, source: 'voice' | 'text') {
     const clean = command.trim();
     if (!clean) return;
+    scheduleWatch.current += 1;
     setAppDeepLink(null);
+    setAgentApprovalId(null);
     setWeeklyNotice(null);
     setTranscript(clean);
     setState('processing');
     setReply('');
     await wait(320);
+
+    if (agentPilot) {
+      try { await handleAgentResult(await sendAgentTurn({ text: clean, source })); }
+      catch (error) {
+        setState('error');
+        setReply(error instanceof Error ? error.message : 'Não consegui consultar o agente.');
+      }
+      return;
+    }
 
     const assistant = engine.current ?? createConversationClient(dataProvider);
     engine.current = assistant;
@@ -144,6 +158,18 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null 
   }
 
   async function confirm() {
+    if (agentApprovalId) {
+      setState('action');
+      try {
+        const approvalId = agentApprovalId;
+        setAgentApprovalId(null);
+        await handleAgentResult(await sendAgentTurn({ approvalId, decision: 'approve' }));
+      } catch (error) {
+        setState('error');
+        setReply(error instanceof Error ? error.message : 'Não consegui confirmar a ação.');
+      }
+      return;
+    }
     if (!pending || !engine.current) return;
     setState('action');
     await wait(180);
@@ -164,11 +190,14 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null 
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(result.scheduleHandoff),
         });
-        const payload = await response.json() as { deepLink?: string; error?: string };
+        const payload = await response.json() as { id?: string; deepLink?: string; androidIntent?: string; error?: string };
         if (!response.ok || !payload.deepLink) throw new Error(payload.error || 'Não consegui preparar o aplicativo.');
-        setAppDeepLink(payload.deepLink);
-        finish(result.reply);
-        window.setTimeout(() => window.location.assign(payload.deepLink!), 120);
+        const launchUrl = payload.androidIntent || payload.deepLink;
+        setAppDeepLink(launchUrl);
+        setState('action');
+        setReply('Abrindo o aplicativo. O agendamento só estará concluído quando o celular confirmar.');
+        if (payload.id) void watchScheduleStatus(payload.id, ++scheduleWatch.current);
+        window.setTimeout(() => window.location.assign(launchUrl), 120);
       } catch (error) {
         setState('error');
         setReply(error instanceof Error ? error.message : 'Não consegui abrir o aplicativo de agendamento.');
@@ -182,7 +211,75 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null 
     }
   }
 
+  async function handleAgentResult(result: AgentClientResult) {
+    if (result.kind === 'approval_required' && result.approvalId) {
+      setAgentApprovalId(result.approvalId);
+      setState('confirmation');
+      setReply(result.reply);
+      speak(result.reply);
+      return;
+    }
+    if (result.kind === 'cancelled') {
+      setState('idle');
+      setReply(result.reply);
+      return;
+    }
+
+    const handoff = verifiedScheduleHandoff(result);
+    if (handoff && typeof handoff.handoffId === 'string') {
+      const launchUrl = typeof handoff.androidIntent === 'string'
+        ? handoff.androidIntent
+        : typeof handoff.deepLink === 'string' ? handoff.deepLink : null;
+      if (launchUrl) {
+        setAppDeepLink(launchUrl);
+        setState('action');
+        setReply('Abrindo o aplicativo. O agendamento só estará concluído quando o celular confirmar.');
+        void watchScheduleStatus(handoff.handoffId, ++scheduleWatch.current);
+        window.setTimeout(() => window.location.assign(launchUrl), 120);
+        return;
+      }
+    }
+    if (result.kind === 'failed') {
+      setState('error');
+      setReply(result.reply);
+      return;
+    }
+    finish(result.reply);
+  }
+
+  async function watchScheduleStatus(id: string, watchId: number) {
+    for (let attempt = 0; attempt < 90 && scheduleWatch.current === watchId; attempt += 1) {
+      await wait(2_000);
+      try {
+        const response = await fetch(`/api/schedule/status?id=${encodeURIComponent(id)}`, { cache: 'no-store' });
+        if (!response.ok) continue;
+        const status = await response.json() as { status?: string; errorCode?: string | null };
+        if (status.status === 'scheduled_on_device') {
+          setAppDeepLink(null);
+          setRecent((items) => items.map((item) => item.intent === 'schedule_whatsapp_message'
+            ? { ...item, status: 'agendado no celular' }
+            : item));
+          finish('Agendamento confirmado no celular. No horário, toque na notificação para abrir o WhatsApp.');
+          return;
+        }
+        if (status.status === 'failed') {
+          setState('error');
+          setReply(scheduleFailureMessage(status.errorCode));
+        }
+      } catch {
+        // A rede ou a troca para o aplicativo pode pausar a página; tentamos de novo.
+      }
+    }
+  }
+
   async function cancelConfirmation() {
+    if (agentApprovalId) {
+      const approvalId = agentApprovalId;
+      setAgentApprovalId(null);
+      try { await handleAgentResult(await sendAgentTurn({ approvalId, decision: 'cancel' })); }
+      catch (error) { setState('error'); setReply(error instanceof Error ? error.message : 'Não consegui cancelar.'); }
+      return;
+    }
     const result = await engine.current?.cancelConfirmation();
     setPending(null);
     setState('idle');
@@ -238,8 +335,12 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null 
         <div><button type="button" className={styles.secondary} onClick={() => void cancelConfirmation()}>Cancelar</button><button type="button" className={styles.primary} onClick={() => void confirm()}>{pending.intent === 'schedule_whatsapp_message' ? 'Agendar no celular' : 'Abrir WhatsApp'}</button></div>
       </div>}
 
+      {state === 'confirmation' && agentApprovalId && <div className={styles.confirmation}>
+        <div><button type="button" className={styles.secondary} onClick={() => void cancelConfirmation()}>Cancelar</button><button type="button" className={styles.primary} onClick={() => void confirm()}>Confirmar</button></div>
+      </div>}
+
       {appDeepLink && <div className={styles.confirmation}>
-        <p>Se o aplicativo não abriu sozinho, toque abaixo.</p>
+        <p>Se o aplicativo não abriu sozinho, toque abaixo. O site continuará aguardando a confirmação real do celular.</p>
         <div><a className={styles.primary} href={appDeepLink}>Abrir aplicativo</a></div>
       </div>}
 
@@ -262,6 +363,11 @@ function iconFor(intent: string) { return ({ create_expense: 'R$', create_remind
 function formatScheduledAt(value: unknown) {
   if (typeof value !== 'string' || Number.isNaN(Date.parse(value))) return 'horário a confirmar';
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
+}
+function scheduleFailureMessage(errorCode: string | null | undefined) {
+  if (errorCode === 'permission_denied') return 'O celular não autorizou notificações. Abra o aplicativo, permita os avisos e tente novamente.';
+  if (errorCode === 'invalid_time') return 'O horário passou antes de o celular concluir. Escolha um novo horário.';
+  return 'O celular não conseguiu agendar. Abra o aplicativo e tente novamente.';
 }
 function initials(email: string | null) { const value = email?.split('@')[0] || 'MA'; return value.slice(0, 2).toLocaleUpperCase('pt-BR'); }
 function MicIcon() { return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="3" width="8" height="13" rx="4" /><path d="M5 12a7 7 0 0 0 14 0M12 19v3M8 22h8" /></svg>; }

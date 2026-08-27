@@ -186,7 +186,9 @@ test('agenda mensagem futura para grupo e entrega o handoff ao aplicativo', asyn
   assert.equal(scheduled.scheduleHandoff?.body, 'teremos reunião.');
   assert.equal(scheduled.scheduleHandoff?.phone, null);
   assert.ok(Date.parse(String(scheduled.scheduleHandoff?.dueAt)) > Date.now());
-  assert.ok(repository.read().actionLogs.some((log) => log.intent === 'schedule_whatsapp_message'));
+  const scheduleLog = repository.read().actionLogs.find((log) => log.intent === 'schedule_whatsapp_message');
+  assert.equal(scheduleLog?.status, 'pending');
+  assert.equal(scheduled.scheduleHandoff?.actionLogId, scheduleLog?.id);
 });
 
 test('data mencionada no texto da mensagem não transforma envio imediato em agendamento', async () => {

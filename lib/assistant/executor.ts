@@ -8,7 +8,7 @@ export type ExecutionResult = {
   reply: string;
   entityId: string | null;
   whatsappHandoff?: WhatsAppHandoff;
-  scheduleHandoff?: WhatsAppHandoff & { dueAt: string };
+  scheduleHandoff?: WhatsAppHandoff & { dueAt: string; actionLogId: string };
 };
 
 export async function executeAction(
@@ -147,11 +147,11 @@ export async function executeAction(
       phone: contact?.phone || null,
       dueAt,
     };
-    repository.log({ intent: action.intent, entityType: 'message', entityId: message.id, summary: `Preparar agendamento para ${message.recipientName}`, source, reversible: false, before: message, after: message });
+    const actionLog = repository.log({ intent: action.intent, entityType: 'message', entityId: message.id, summary: `Agendamento para ${message.recipientName}`, status: 'pending', source, reversible: false, before: message, after: message });
     return {
       reply: `A mensagem está pronta para ${message.recipientName}. Vou abrir o aplicativo para agendar o aviso em ${friendlyDate(dueAt, timezone)}.`,
       entityId: message.id,
-      scheduleHandoff,
+      scheduleHandoff: { ...scheduleHandoff, actionLogId: actionLog.id },
     };
   }
 

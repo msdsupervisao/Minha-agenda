@@ -12,7 +12,8 @@
     "lint": "eslint .",
     "test": "tsx --test tests/*.test.ts",
     "test:openai-live": "tsx scripts/test-openai-live.ts",
-    "test:supabase-live": "tsx scripts/test-supabase-live.ts"
+    "test:supabase-live": "tsx scripts/test-supabase-live.ts",
+    "test:agent-supabase-live": "node --env-file=.env.local --import tsx scripts/test-agent-supabase-live.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

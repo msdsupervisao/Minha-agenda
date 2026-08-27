@@ -39,7 +39,12 @@ export class OperationalMemoryRepository {
     if (!this.storage) return emptyMemory();
     try {
       const parsed = JSON.parse(this.storage.getItem(memoryKey) || 'null') as OperationalMemory | null;
-      return parsed?.version === 3 ? parsed : emptyMemory();
+      if (parsed?.version !== 3) return emptyMemory();
+      parsed.actionLogs = parsed.actionLogs.map((log) => ({
+        ...log,
+        status: normalizeActionLogStatus(log.status, log.undoneAt),
+      }));
+      return parsed;
     } catch {
       return emptyMemory();
     }
@@ -86,9 +91,9 @@ export class OperationalMemoryRepository {
     return contact;
   }
 
-  log(input: Omit<ActionLog, 'id' | 'userId' | 'createdAt' | 'undoneAt'>) {
+  log(input: Omit<ActionLog, 'id' | 'userId' | 'createdAt' | 'undoneAt' | 'status'> & { status?: ActionLog['status'] }) {
     const memory = this.read();
-    const log: ActionLog = { ...input, id: makeId(), userId: memory.userId, createdAt: new Date().toISOString(), undoneAt: null };
+    const log: ActionLog = { ...input, status: input.status ?? 'completed', id: makeId(), userId: memory.userId, createdAt: new Date().toISOString(), undoneAt: null };
     this.update((memory) => { memory.actionLogs.unshift(log); });
     return log;
   }
@@ -104,7 +109,13 @@ export class OperationalMemoryRepository {
         : log.intent === 'send_whatsapp_message'
           ? 'aberto no WhatsApp'
           : log.intent === 'schedule_whatsapp_message'
-            ? 'aguardando confirmação no celular'
+            ? log.status === 'completed'
+              ? 'agendado no celular'
+              : log.status === 'failed'
+                ? 'falhou no celular'
+                : log.status === 'unknown'
+                  ? 'sem confirmação do celular'
+                  : 'aguardando o celular'
           : 'registrado agora',
     }));
   }
@@ -123,10 +134,11 @@ export class OperationalMemoryRepository {
       collection.unshift(log.before as never);
     }
     log.undoneAt = new Date().toISOString();
+    log.status = 'undone';
     memory.actionLogs.unshift({
       id: makeId(), userId: memory.userId, intent: 'undo_last_action', entityType: log.entityType,
       entityId: log.entityId, summary: `Desfeito: ${log.summary}`, createdAt: new Date().toISOString(),
-      source, reversible: false, undoneAt: null, before: log.after, after: log.before,
+      status: 'completed', source, reversible: false, undoneAt: null, before: log.after, after: log.before,
     });
     this.write(memory);
     return log;
@@ -197,6 +209,13 @@ export function rangeBounds(
   const start = wallDateToInstant(wall, timezone);
   const endExclusive = wallDateToInstant(endWall, timezone);
   return { start, end: new Date(endExclusive.getTime() - 1) };
+}
+
+function normalizeActionLogStatus(value: unknown, undoneAt: string | null): ActionLog['status'] {
+  if (undoneAt) return 'undone';
+  return value === 'pending' || value === 'failed' || value === 'unknown' || value === 'undone'
+    ? value
+    : 'completed';
 }
 
 function wallDateToInstant(date: Date, timezone: string) {

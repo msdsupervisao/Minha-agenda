@@ -1,7 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto';
 
 export const SCHEDULE_HANDOFF_TTL_MS = 30 * 60 * 1000;
+export const SCHEDULE_HANDOFF_AUDIT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 export const SCHEDULE_HANDOFF_CODE_PATTERN = /^[A-Za-z0-9_-]{22}$/;
+
+export type ScheduleHandoffStatus = 'awaiting_device' | 'scheduled_on_device' | 'failed';
 
 const MOBILE_ORIGINS = new Set([
   'capacitor://localhost',
@@ -16,6 +19,20 @@ export function createScheduleHandoffCode() {
 
 export function hashScheduleHandoffCode(code: string) {
   return createHash('sha256').update(code, 'utf8').digest('hex');
+}
+
+export function buildScheduleDeepLinks(code: string) {
+  if (!SCHEDULE_HANDOFF_CODE_PATTERN.test(code)) throw new Error('invalid_schedule_handoff_code');
+  return {
+    deepLink: `minhaagenda://schedule?code=${code}`,
+    androidIntent: `intent://schedule?code=${code}#Intent;scheme=minhaagenda;package=com.minhaagenda.app;end`,
+  };
+}
+
+export function scheduleAuditExpiresAt(dueAt: string, now = Date.now()) {
+  const dueTime = Date.parse(dueAt);
+  const base = Number.isFinite(dueTime) ? Math.max(dueTime, now) : now;
+  return new Date(base + SCHEDULE_HANDOFF_AUDIT_RETENTION_MS).toISOString();
 }
 
 export function scheduleDueAtIssue(value: string, now = Date.now()): string | null {

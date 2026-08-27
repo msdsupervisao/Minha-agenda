@@ -4,6 +4,7 @@ import { getSupabasePublicConfig } from '@/lib/supabase/config';
 import { getAuthenticatedUser } from '@/lib/supabase/auth';
 import { createClient } from '@/lib/supabase/server';
 import {
+  buildScheduleDeepLinks,
   createScheduleHandoffCode,
   hashScheduleHandoffCode,
   scheduleDueAtIssue,
@@ -18,6 +19,7 @@ const CreateSchema = z.object({
   recipientName: z.string().trim().max(200).nullish(),
   phone: z.string().trim().max(40).nullish(),
   dueAt: z.string().datetime(),
+  actionLogId: z.string().uuid(),
 }).strict();
 
 export async function POST(request: Request) {
@@ -38,7 +40,7 @@ export async function POST(request: Request) {
 
   try {
     const client = await createClient();
-    const { error } = await client.from('schedule_handoffs').insert({
+    const { data, error } = await client.from('schedule_handoffs').insert({
       user_id: user.id,
       code_hash: hashScheduleHandoffCode(code),
       body: parsed.data.body,
@@ -46,10 +48,12 @@ export async function POST(request: Request) {
       phone: parsed.data.phone ?? null,
       due_at: parsed.data.dueAt,
       expires_at: expiresAt,
-    });
+      status: 'awaiting_device',
+      action_log_id: parsed.data.actionLogId,
+    }).select('id').single();
     if (error) throw error;
     return NextResponse.json(
-      { deepLink: `minhaagenda://schedule?code=${code}`, expiresAt },
+      { id: data.id, ...buildScheduleDeepLinks(code), status: 'awaiting_device', expiresAt },
       { headers: { 'cache-control': 'no-store' } },
     );
   } catch (error) {

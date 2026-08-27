@@ -4,12 +4,21 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { Share } from '@capacitor/share';
 // Regra pura reaproveitada da Agenda (sem duplicar): normalização de telefone BR.
 import { normalizeWhatsAppPhone } from '../../lib/assistant/whatsapp-handoff';
+import { notificationIdForScheduleCode } from '../../lib/schedule/notification-id';
 
-// A Agenda continua no site; o app só resgata o código e agenda. Base da API na Vercel.
-const API_BASE = 'https://minha-agenda1.vercel.app';
+// A Agenda continua no site; o app só resgata o código e agenda. Builds de teste
+// devem definir VITE_API_BASE para não falar acidentalmente com produção.
+const API_BASE = apiBase(import.meta.env.VITE_API_BASE);
 const SCHEME = 'minhaagenda';
 
-type Handoff = { body: string; recipientName: string | null; phone: string | null; dueAt: string };
+type Handoff = {
+  body: string;
+  recipientName: string | null;
+  phone: string | null;
+  dueAt: string;
+  status: 'awaiting_device' | 'scheduled_on_device' | 'failed';
+  notificationId: number | null;
+};
 
 const view = document.getElementById('view') as HTMLElement;
 
@@ -70,13 +79,25 @@ async function redeem(code: string): Promise<Handoff> {
   return res.json() as Promise<Handoff>;
 }
 
-async function acknowledge(code: string) {
+async function acknowledge(code: string, notificationId: number) {
   const res = await fetch(`${API_BASE}/api/schedule/ack`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({ code, status: 'scheduled_on_device', notificationId }),
   });
   if (!res.ok) throw new Error('ack_failed');
+}
+
+async function reportFailure(code: string, errorCode: 'permission_denied' | 'invalid_time' | 'schedule_failed') {
+  try {
+    await fetch(`${API_BASE}/api/schedule/ack`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code, status: 'failed', errorCode }),
+    });
+  } catch {
+    // O erro já está visível no aparelho; o código continua válido para retry.
+  }
 }
 
 async function ensureNotificationPermission(): Promise<boolean> {
@@ -94,7 +115,9 @@ async function scheduleLocal(handoff: Handoff, code: string) {
   if (!(await ensureNotificationPermission())) {
     throw new Error('Preciso da permissão de notificações para avisar no horário.');
   }
-  const id = Math.floor(Math.random() * 2_147_483_000) + 1;
+  // O mesmo código sempre produz o mesmo ID. Reabrir o deep link substitui o
+  // agendamento anterior em vez de criar notificações duplicadas.
+  const id = notificationIdForScheduleCode(code);
   const result = await LocalNotifications.schedule({
     notifications: [{
       id,
@@ -113,7 +136,7 @@ async function scheduleLocal(handoff: Handoff, code: string) {
   });
 
   let cleanupPending = false;
-  try { await acknowledge(code); }
+  try { await acknowledgeWithRetry(code, id); }
   catch { cleanupPending = true; }
 
   const timingNotice = result.warning
@@ -133,31 +156,63 @@ async function scheduleLocal(handoff: Handoff, code: string) {
     </div>`);
 }
 
-function renderConfirm(handoff: Handoff, code: string) {
-  render(`
-    <div class="card">
-      <p class="meta">${handoff.recipientName ? escapeHtml(handoff.recipientName) : 'Destino escolhido no envio'} · ${formatDue(handoff.dueAt)}</p>
-      <p class="body">${escapeHtml(handoff.body)}</p>
-      <button id="confirm" class="primary">Agendar no celular</button>
-    </div>`);
-  document.getElementById('confirm')?.addEventListener('click', async (event) => {
-    const button = event.currentTarget as HTMLButtonElement;
-    button.disabled = true;
-    button.textContent = 'Agendando…';
-    try { await scheduleLocal(handoff, code); }
-    catch (error) {
-      render(`<p class="error">${escapeHtml(error instanceof Error ? error.message : 'Não foi possível agendar.')}</p>`);
-    }
-  });
+async function acknowledgeWithRetry(code: string, notificationId: number) {
+  let lastError: unknown;
+  for (const delay of [0, 400, 1_200]) {
+    if (delay) await new Promise((resolve) => window.setTimeout(resolve, delay));
+    try { await acknowledge(code, notificationId); return; }
+    catch (error) { lastError = error; }
+  }
+  throw lastError;
 }
 
+const handledCodes = new Set<string>();
+
 async function handleCode(code: string) {
-  render(`<p class="hint">Resgatando agendamento…</p>`);
+  if (handledCodes.has(code)) return;
+  handledCodes.add(code);
+  render(`<p class="hint">Resgatando e agendando no celular…</p>`);
   try {
-    renderConfirm(await redeem(code), code);
+    const handoff = await redeem(code);
+    if (handoff.status === 'scheduled_on_device') {
+      render(`
+        <div class="card">
+          <p class="ok">✅ Agendamento já confirmado no celular.</p>
+          <p class="meta">${handoff.recipientName ? escapeHtml(handoff.recipientName) : 'Destino no envio'} · ${formatDue(handoff.dueAt)}</p>
+          <p class="hint">No horário, toque na notificação e confirme o envio no WhatsApp.</p>
+        </div>`);
+      return;
+    }
+    await scheduleLocal(handoff, code);
   } catch (error) {
-    render(`<p class="error">${escapeHtml(error instanceof Error ? error.message : 'Falha ao resgatar.')}</p>`);
+    const message = error instanceof Error ? error.message : 'Falha ao agendar.';
+    await reportFailure(code, failureCode(message));
+    render(`
+      <div class="card">
+        <p class="error">${escapeHtml(message)}</p>
+        <button id="retry" class="primary">Tentar novamente</button>
+      </div>`);
+    document.getElementById('retry')?.addEventListener('click', () => {
+      handledCodes.delete(code);
+      void handleCode(code);
+    });
   }
+}
+
+function apiBase(value: string | undefined) {
+  const normalized = value?.trim().replace(/\/$/, '');
+  if (!normalized) throw new Error('VITE_API_BASE não configurada para o aplicativo Android.');
+  const url = new URL(normalized);
+  if (url.protocol !== 'https:' && url.hostname !== 'localhost') {
+    throw new Error('VITE_API_BASE precisa usar HTTPS.');
+  }
+  return url.origin;
+}
+
+function failureCode(message: string): 'permission_denied' | 'invalid_time' | 'schedule_failed' {
+  if (/permiss/i.test(message)) return 'permission_denied';
+  if (/horário|passou/i.test(message)) return 'invalid_time';
+  return 'schedule_failed';
 }
 
 // --- Registro de listeners (cedo, para pegar tap com o app fechado) ---

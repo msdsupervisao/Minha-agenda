@@ -106,6 +106,7 @@ export type ActionLog = {
   entityType: EntityType | null;
   entityId: string | null;
   summary: string;
+  status: 'pending' | 'completed' | 'failed' | 'unknown' | 'undone';
   createdAt: string;
   source: Source;
   reversible: boolean;
@@ -166,7 +167,7 @@ export type EngineResult = {
   action: AssistantAction | null;
   activities: ActivityItem[];
   whatsappHandoff?: import('./whatsapp-handoff').WhatsAppHandoff;
-  scheduleHandoff?: import('./whatsapp-handoff').WhatsAppHandoff & { dueAt: string };
+  scheduleHandoff?: import('./whatsapp-handoff').WhatsAppHandoff & { dueAt: string; actionLogId: string };
   weeklyNotice?: import('../notices/weekly').ResolvedWeeklyNotice;
   provider?: AiProviderName;
   providerNotice?: string;

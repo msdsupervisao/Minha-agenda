@@ -46,7 +46,7 @@ export async function POST(request: Request) {
     const client = createServiceClient();
     const codeHash = hashScheduleHandoffCode(parsed.data.code);
     const { data: row, error } = await client.from('schedule_handoffs')
-      .select('body,recipient_name,phone,due_at,expires_at')
+      .select('body,recipient_name,phone,due_at,expires_at,status,device_notification_id')
       .eq('code_hash', codeHash).maybeSingle();
     if (error) throw error;
     if (!row) return json(request, { error: 'Código não encontrado.' }, 404);
@@ -60,6 +60,8 @@ export async function POST(request: Request) {
       recipientName: row.recipient_name,
       phone: row.phone,
       dueAt: row.due_at,
+      status: row.status,
+      notificationId: row.device_notification_id,
     });
   } catch (error) {
     console.error('[minha-agenda:data]', JSON.stringify({ timestamp: new Date().toISOString(), operation: 'schedule_redeem', result: 'error', error: error instanceof Error ? error.message : 'unknown' }));

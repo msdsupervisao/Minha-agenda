@@ -15,11 +15,15 @@ async function handle(request: Request) {
   const client = createServiceClient();
   const now = new Date().toISOString();
 
-  // Handoffs carregam texto e telefone: registros não resgatados não devem ficar
-  // acumulados. O ACK apaga imediatamente; o cron cobre códigos abandonados.
+  // Handoffs carregam texto e telefone: pendências expiram rápido; ACKs confirmados
+  // permanecem apenas durante a janela curta de auditoria definida pelo servidor.
   const { count: cleanedHandoffs, error: cleanupError } = await client
     .from('schedule_handoffs').delete({ count: 'exact' }).lt('expires_at', now);
   if (cleanupError) console.error('[minha-agenda:data]', JSON.stringify({ timestamp: now, operation: 'schedule_cleanup', result: 'error', error: cleanupError.message }));
+
+  const { count: cleanedAgentApprovals, error: approvalCleanupError } = await client
+    .from('agent_pending_approvals').delete({ count: 'exact' }).lt('expires_at', now);
+  if (approvalCleanupError) console.error('[minha-agenda:data]', JSON.stringify({ timestamp: now, operation: 'agent_approval_cleanup', result: 'error', error: approvalCleanupError.message }));
 
   const { data: due, error } = await client.from('reminders')
     .select('id,user_id,title,due_at,metadata')
@@ -51,7 +55,14 @@ async function handle(request: Request) {
     }
   }
 
-  return NextResponse.json({ ok: true, checked: (due || []).length, sent, failed, cleanedHandoffs: cleanedHandoffs ?? 0 });
+  return NextResponse.json({
+    ok: true,
+    checked: (due || []).length,
+    sent,
+    failed,
+    cleanedHandoffs: cleanedHandoffs ?? 0,
+    cleanedAgentApprovals: cleanedAgentApprovals ?? 0,
+  });
 }
 
 export async function POST(request: Request) { return handle(request); }
