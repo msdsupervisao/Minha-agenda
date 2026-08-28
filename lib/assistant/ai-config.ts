@@ -18,8 +18,10 @@ export function getAiRuntimeConfig(env: Readonly<Record<string, string | undefin
   const requestedProvider: AiProviderName = (rawProvider as AiProviderName | undefined) || (apiKey ? 'openai' : 'local');
   const missingKey = requestedProvider === 'openai' && !apiKey;
   const activeProvider: AiProviderName = missingKey ? 'local' : requestedProvider;
-  const parsedTimeout = Number(env.OPENAI_TIMEOUT_MS || 8000);
-  const timeoutMs = Number.isFinite(parsedTimeout) ? Math.max(1000, Math.min(30000, parsedTimeout)) : 8000;
+  const parsedTimeout = Number(env.OPENAI_TIMEOUT_MS || 20000);
+  // Tool-calling turns can require several seconds; avoid failing healthy
+  // production requests just because an old 8s setting is still configured.
+  const timeoutMs = Number.isFinite(parsedTimeout) ? Math.max(15000, Math.min(30000, parsedTimeout)) : 20000;
   // Híbrido: com a OpenAI ativa, tenta o interpretador local primeiro e só gasta
   // a OpenAI quando o local não entende. Desligável com AI_LOCAL_FIRST=false.
   const localFirst = activeProvider === 'openai' && env.AI_LOCAL_FIRST?.trim().toLowerCase() !== 'false';
