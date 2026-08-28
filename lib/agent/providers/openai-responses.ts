@@ -56,7 +56,6 @@ export class OpenAIResponsesAgentProvider implements AgentProvider {
         this.responses.create({
           model,
           store: false,
-          reasoning: { effort: 'none' },
           instructions: request.instructions,
           input,
           tools: request.tools.map((tool) => ({
@@ -83,9 +82,9 @@ export class OpenAIResponsesAgentProvider implements AgentProvider {
         model,
         text: response.output_text || '',
         toolCalls: parseToolCalls(output),
-        // Com effort:none não há raciocínio útil a preservar. Mesmo assim o
-        // modelo pode emitir um envelope reasoning vazio; não o reenvie em um
-        // fluxo stateless (store:false), pois seu id não fica armazenado.
+        // Este modelo emite um envelope reasoning vazio mesmo sem consumir
+        // reasoning tokens. Não o reenvie em um fluxo stateless (store:false),
+        // pois seu id não fica armazenado.
         continuation: {
           kind: 'openai_responses',
           input: [...input, ...output.filter((item) => item.type !== 'reasoning')],

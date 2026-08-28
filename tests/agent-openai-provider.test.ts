@@ -44,7 +44,7 @@ test('adaptador Responses envia funções estritas e interpreta tool calls', asy
 
   const request = captured[0];
   assert.equal(request.store, false);
-  assert.deepEqual(request.reasoning, { effort: 'none' });
+  assert.equal(request.reasoning, undefined);
   assert.equal(request.parallel_tool_calls, false);
   assert.equal(request.tool_choice, 'auto');
   const tools = request.tools as Array<{ type: string; strict: boolean; name: string }>;
