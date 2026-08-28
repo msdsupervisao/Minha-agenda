@@ -34,6 +34,17 @@ const quickCommands = [
 
 function wait(time: number) { return new Promise((resolve) => window.setTimeout(resolve, time)); }
 
+function quickReply(command: string): string | null {
+  const normalized = command.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  if (/^(quem e voce|quem e vc|o que voce faz|o que vc faz)\??$/.test(normalized)) {
+    return 'Sou sua assistente pessoal. Posso organizar sua agenda, criar lembretes, consultar suas turmas e preparar mensagens para o WhatsApp.';
+  }
+  if (/^(oi|ola|bom dia|boa tarde|boa noite)[!. ]*$/.test(normalized)) {
+    return 'Olá! Estou pronta para ajudar. O que você precisa?';
+  }
+  return null;
+}
+
 export default function AssistantHub({ dataProvider = 'local', userEmail = null, agentPilot = false }: { dataProvider?: DataProviderName; userEmail?: string | null; agentPilot?: boolean }) {
   const [state, setState] = useState<AssistantState>('idle');
   const [transcript, setTranscript] = useState('');
@@ -92,6 +103,13 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
     await wait(320);
 
     if (agentPilot) {
+      const directReply = quickReply(clean);
+      if (directReply) {
+        setState('idle');
+        setReply(directReply);
+        speak(directReply);
+        return;
+      }
       try { await handleAgentResult(await sendAgentTurn({ text: clean, source })); }
       catch (error) {
         setState('error');
