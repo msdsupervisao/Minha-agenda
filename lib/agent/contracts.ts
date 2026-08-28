@@ -84,6 +84,13 @@ export type AgentProviderDiagnostic = {
   code?: string;
   type?: string;
   param?: string;
+  limitTokens?: number;
+  remainingTokens?: number;
+  resetTokens?: string;
+  limitProjectTokens?: number;
+  remainingProjectTokens?: number;
+  resetProjectTokens?: string;
+  retryAfterSeconds?: number;
 };
 
 export type AgentProviderRequest = {

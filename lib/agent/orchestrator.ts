@@ -192,7 +192,28 @@ function providerErrorDetails(error: unknown): Record<string, string | number> {
       ? source.requestID
       : null;
   if (requestId) details.requestId = requestId;
+  const headers = source.headers;
+  if (headers && typeof (headers as { get?: unknown }).get === 'function') {
+    const get = (name: string) => (headers as { get(name: string): string | null }).get(name);
+    addNumericHeader(details, 'limitTokens', get('x-ratelimit-limit-tokens'));
+    addNumericHeader(details, 'remainingTokens', get('x-ratelimit-remaining-tokens'));
+    addStringHeader(details, 'resetTokens', get('x-ratelimit-reset-tokens'));
+    addNumericHeader(details, 'limitProjectTokens', get('x-ratelimit-limit-project-tokens'));
+    addNumericHeader(details, 'remainingProjectTokens', get('x-ratelimit-remaining-project-tokens'));
+    addStringHeader(details, 'resetProjectTokens', get('x-ratelimit-reset-project-tokens'));
+    addNumericHeader(details, 'retryAfterSeconds', get('retry-after'));
+  }
   return details;
+}
+
+function addNumericHeader(target: Record<string, string | number>, key: string, value: string | null) {
+  if (value === null || value.trim() === '') return;
+  const parsed = Number(value);
+  if (Number.isFinite(parsed)) target[key] = parsed;
+}
+
+function addStringHeader(target: Record<string, string | number>, key: string, value: string | null) {
+  if (value !== null && value.trim() !== '') target[key] = value;
 }
 
 function failed(
@@ -224,5 +245,12 @@ function providerDiagnostic(details: Record<string, string | number>): AgentProv
   if (typeof details.code === 'string') diagnostic.code = details.code;
   if (typeof details.type === 'string') diagnostic.type = details.type;
   if (typeof details.param === 'string') diagnostic.param = details.param;
+  if (typeof details.limitTokens === 'number') diagnostic.limitTokens = details.limitTokens;
+  if (typeof details.remainingTokens === 'number') diagnostic.remainingTokens = details.remainingTokens;
+  if (typeof details.resetTokens === 'string') diagnostic.resetTokens = details.resetTokens;
+  if (typeof details.limitProjectTokens === 'number') diagnostic.limitProjectTokens = details.limitProjectTokens;
+  if (typeof details.remainingProjectTokens === 'number') diagnostic.remainingProjectTokens = details.remainingProjectTokens;
+  if (typeof details.resetProjectTokens === 'string') diagnostic.resetProjectTokens = details.resetProjectTokens;
+  if (typeof details.retryAfterSeconds === 'number') diagnostic.retryAfterSeconds = details.retryAfterSeconds;
   return diagnostic;
 }

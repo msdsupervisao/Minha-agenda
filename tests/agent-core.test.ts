@@ -196,6 +196,15 @@ test('falha do provedor expõe apenas diagnósticos seguros', async () => {
         code: 'rate_limit_exceeded',
         type: 'requests',
         param: 'model',
+        headers: new Headers({
+          'x-ratelimit-limit-tokens': '500000',
+          'x-ratelimit-remaining-tokens': '0',
+          'x-ratelimit-reset-tokens': '2m30s',
+          'x-ratelimit-limit-project-tokens': '2500',
+          'x-ratelimit-remaining-project-tokens': '0',
+          'x-ratelimit-reset-project-tokens': '1h',
+          'retry-after': '12',
+        }),
       });
     },
   };
@@ -208,6 +217,13 @@ test('falha do provedor expõe apenas diagnósticos seguros', async () => {
     code: 'rate_limit_exceeded',
     type: 'requests',
     param: 'model',
+    limitTokens: 500000,
+    remainingTokens: 0,
+    resetTokens: '2m30s',
+    limitProjectTokens: 2500,
+    remainingProjectTokens: 0,
+    resetProjectTokens: '1h',
+    retryAfterSeconds: 12,
   });
   assert.doesNotMatch(JSON.stringify(result), /sensível/);
 });
