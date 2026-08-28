@@ -79,6 +79,13 @@ export type AgentTokenUsage = {
   cachedInputTokens: number;
 };
 
+export type AgentProviderDiagnostic = {
+  status?: number;
+  code?: string;
+  type?: string;
+  param?: string;
+};
+
 export type AgentProviderRequest = {
   instructions: string;
   messages: AgentMessage[];
@@ -129,7 +136,7 @@ export type AgentRunResult = AgentRunBase & (
       pendingCalls: AgentToolCall[];
       continuation: unknown;
     }
-  | { kind: 'failed'; reply: string; errorCode: string }
+  | { kind: 'failed'; reply: string; errorCode: string; providerDiagnostic?: AgentProviderDiagnostic }
 );
 
 export function emptyAgentUsage(): AgentTokenUsage {

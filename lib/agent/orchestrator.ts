@@ -1,5 +1,6 @@
 import type {
   AgentProvider,
+  AgentProviderDiagnostic,
   AgentRunInput,
   AgentRunResult,
   AgentTokenUsage,
@@ -51,10 +52,11 @@ export class AgentOrchestrator {
       } catch (error) {
         // Nunca engolir a falha do provedor: o motivo real (ex.: 400 de schema
         // strict da OpenAI) precisa ficar visível no log do servidor.
+        const details = providerErrorDetails(error);
         console.error('[agent] provider.generate falhou', {
           provider: this.provider.name,
           step,
-          ...providerErrorDetails(error),
+          ...details,
         });
         const verifiedEffect = toolResults.some((result) => result.risk !== 'read' && result.status === 'success' && result.verified);
         return failed(
@@ -67,6 +69,7 @@ export class AgentOrchestrator {
           verifiedEffect
             ? 'A ação foi executada e verificada, mas não consegui concluir a resposta do agente.'
             : 'Não consegui consultar o provedor de IA.',
+          providerDiagnostic(details),
         );
       }
 
@@ -200,6 +203,26 @@ function failed(
   usage: AgentTokenUsage,
   errorCode: string,
   reply: string,
+  diagnostic?: AgentProviderDiagnostic,
 ): AgentRunResult {
-  return { kind: 'failed', reply, errorCode, provider, model, steps, toolResults, usage };
+  return {
+    kind: 'failed',
+    reply,
+    errorCode,
+    provider,
+    model,
+    steps,
+    toolResults,
+    usage,
+    ...(diagnostic && Object.keys(diagnostic).length > 0 ? { providerDiagnostic: diagnostic } : {}),
+  };
+}
+
+function providerDiagnostic(details: Record<string, string | number>): AgentProviderDiagnostic {
+  const diagnostic: AgentProviderDiagnostic = {};
+  if (typeof details.status === 'number') diagnostic.status = details.status;
+  if (typeof details.code === 'string') diagnostic.code = details.code;
+  if (typeof details.type === 'string') diagnostic.type = details.type;
+  if (typeof details.param === 'string') diagnostic.param = details.param;
+  return diagnostic;
 }

@@ -187,6 +187,31 @@ test('falha do provedor depois de efeito verificado preserva a evidência da aç
   assert.equal(result.toolResults[0].verified, true);
 });
 
+test('falha do provedor expõe apenas diagnósticos seguros', async () => {
+  const provider: AgentProvider = {
+    name: 'test-provider',
+    async generate() {
+      throw Object.assign(new Error('mensagem interna sensível'), {
+        status: 429,
+        code: 'rate_limit_exceeded',
+        type: 'requests',
+        param: 'model',
+      });
+    },
+  };
+
+  const result = await new AgentOrchestrator(provider, new ToolRegistry()).run({ text: 'Teste.', context });
+
+  assert.equal(result.kind, 'failed');
+  assert.deepEqual(result.kind === 'failed' && result.providerDiagnostic, {
+    status: 429,
+    code: 'rate_limit_exceeded',
+    type: 'requests',
+    param: 'model',
+  });
+  assert.doesNotMatch(JSON.stringify(result), /sensível/);
+});
+
 test('retomada executa somente a chamada persistida e já aprovada', async () => {
   let executions = 0;
   const provider = new ScriptedProvider([response({ text: 'O handoff foi criado; o celular ainda precisa confirmar.' })]);
