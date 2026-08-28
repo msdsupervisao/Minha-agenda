@@ -56,7 +56,6 @@ export class OpenAIResponsesAgentProvider implements AgentProvider {
         this.responses.create({
           model,
           store: false,
-          reasoning: { effort: 'none' },
           instructions: request.instructions,
           input,
           tools: request.tools.map((tool) => ({
