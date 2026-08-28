@@ -141,7 +141,6 @@ async function scheduleLocal(handoff: Handoff, code: string) {
       title: handoff.recipientName ? `Mensagem para ${handoff.recipientName}` : 'Mensagem agendada',
       // Evita mostrar a mensagem inteira na tela bloqueada.
       body: 'Toque para preparar o envio no WhatsApp.',
-      channelId: 'schedule',
       // Exato quando o SO permite; aproximado (Doze) como alternativa.
       schedule: {
         at: when,
