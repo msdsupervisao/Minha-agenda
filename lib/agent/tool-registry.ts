@@ -129,9 +129,7 @@ export class AgentToolExecutionError extends Error {
 const STRICT_UNSUPPORTED_KEYWORDS = new Set([
   'format', 'pattern', 'minLength', 'maxLength',
   'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf',
-  'minItems', 'maxItems',
-  'allOf', 'oneOf', 'not', 'dependentRequired', 'dependentSchemas', 'if', 'then', 'else',
-  'uniqueItems', 'contains', 'minContains', 'maxContains',
+  'minItems', 'maxItems', 'uniqueItems', 'contains', 'minContains', 'maxContains',
   'minProperties', 'maxProperties', 'patternProperties', 'propertyNames',
   'unevaluatedItems', 'unevaluatedProperties', 'default',
 ]);
