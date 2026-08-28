@@ -48,7 +48,14 @@ export class AgentOrchestrator {
           continuation,
           toolResults: nextToolResults,
         });
-      } catch {
+      } catch (error) {
+        // Nunca engolir a falha do provedor: o motivo real (ex.: 400 de schema
+        // strict da OpenAI) precisa ficar visível no log do servidor.
+        console.error('[agent] provider.generate falhou', {
+          provider: this.provider.name,
+          step,
+          message: error instanceof Error ? error.message : String(error),
+        });
         const verifiedEffect = toolResults.some((result) => result.risk !== 'read' && result.status === 'success' && result.verified);
         return failed(
           this.provider.name,

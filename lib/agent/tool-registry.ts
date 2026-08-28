@@ -122,10 +122,52 @@ export class AgentToolExecutionError extends Error {
   }
 }
 
+// Constraints em nível de valor que o modo strict da OpenAI (Responses/Structured
+// Outputs) NÃO suporta: se enviadas, a API recusa o schema inteiro com 400 e toda
+// chamada do provedor falha. A validação real continua no Zod (inputSchema.safeParse
+// em execute); aqui apenas deixamos de anunciá-las à OpenAI.
+const STRICT_UNSUPPORTED_KEYWORDS = new Set([
+  'format', 'pattern', 'minLength', 'maxLength',
+  'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf',
+  'minItems', 'maxItems', 'uniqueItems', 'contains', 'minContains', 'maxContains',
+  'minProperties', 'maxProperties', 'patternProperties', 'propertyNames',
+  'unevaluatedItems', 'unevaluatedProperties', 'default',
+]);
+
 function schemaFor(tool: AgentTool<JsonObject>): JsonObject {
   const schema = z.toJSONSchema(tool.inputSchema, { target: 'draft-07' }) as Record<string, unknown>;
   delete schema.$schema;
-  return schema as JsonObject;
+  return stripStrictUnsupported(schema) as JsonObject;
+}
+
+// Percorre o schema como schema (não confunde nomes de propriedade com keywords):
+// remove keywords não suportadas e recursa apenas em posições que contêm subschemas.
+function stripStrictUnsupported(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(stripStrictUnsupported);
+  if (!node || typeof node !== 'object') return node;
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    if (STRICT_UNSUPPORTED_KEYWORDS.has(key)) continue;
+    if (key === 'properties' || key === '$defs' || key === 'definitions') {
+      result[key] = mapSchemaValues(value);
+    } else if (key === 'anyOf' || key === 'allOf' || key === 'oneOf' || key === 'items') {
+      result[key] = stripStrictUnsupported(value);
+    } else if (key === 'additionalProperties' || key === 'not') {
+      result[key] = stripStrictUnsupported(value);
+    } else {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+function mapSchemaValues(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    out[key] = stripStrictUnsupported(entry);
+  }
+  return out;
 }
 
 function failure(call: AgentToolCall, risk: AgentToolResult['risk'], errorCode: string, output: AgentToolResult['output']): AgentToolResult {
