@@ -122,14 +122,14 @@ export class AgentToolExecutionError extends Error {
   }
 }
 
-// O modo strict aceita apenas um subconjunto de JSON Schema. Removemos somente
-// palavras-chave fora desse subconjunto e preservamos restrições documentadas
-// como pattern, format, minimum/maximum, multipleOf e minItems/maxItems.
-// minLength/maxLength continuam fora do descriptor porque foram incompatíveis
-// com o contrato de ferramentas observado neste projeto. A validação completa
-// permanece no Zod (inputSchema.safeParse em execute).
+// Constraints em nível de valor que o contrato strict de function tools da
+// Responses API rejeitou em produção. Se qualquer descriptor as emitir, a API
+// recusa o schema antes de consumir tokens. A validação completa permanece no
+// Zod (inputSchema.safeParse em execute).
 const STRICT_UNSUPPORTED_KEYWORDS = new Set([
-  'minLength', 'maxLength',
+  'format', 'pattern', 'minLength', 'maxLength',
+  'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf',
+  'minItems', 'maxItems',
   'allOf', 'oneOf', 'not', 'dependentRequired', 'dependentSchemas', 'if', 'then', 'else',
   'uniqueItems', 'contains', 'minContains', 'maxContains',
   'minProperties', 'maxProperties', 'patternProperties', 'propertyNames',

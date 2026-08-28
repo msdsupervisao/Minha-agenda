@@ -8,7 +8,9 @@ import { createNoticeScheduleTools, type ScheduleHandoffStore } from '../lib/age
 // Keywords fora do subconjunto aceito pelo modo strict. O teste é propositalmente
 // independente da constante de produção para detectar regressões no sanitizador.
 const FORBIDDEN_KEYWORDS = new Set([
-  'minLength', 'maxLength',
+  'format', 'pattern', 'minLength', 'maxLength',
+  'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf',
+  'minItems', 'maxItems',
   'allOf', 'oneOf', 'not', 'dependentRequired', 'dependentSchemas', 'if', 'then', 'else',
   'uniqueItems', 'contains', 'minContains', 'maxContains',
   'minProperties', 'maxProperties', 'patternProperties', 'propertyNames',
@@ -77,7 +79,7 @@ test('descriptors preservam os invariantes exigidos pelo strict', () => {
   }
 });
 
-test('descriptors preservam restrições suportadas pela OpenAI', () => {
+test('descriptors removem restrições rejeitadas pelo function calling strict', () => {
   const registry = new ToolRegistry([{
     name: 'documented_constraints',
     description: 'Valida as restrições documentadas para schemas strict.',
@@ -93,11 +95,11 @@ test('descriptors preservam restrições suportadas pela OpenAI', () => {
   const params = registry.descriptors()[0].parameters as Record<string, unknown>;
   const properties = params.properties as Record<string, Record<string, unknown>>;
 
-  assert.equal(properties.id.format, 'uuid');
-  assert.equal(typeof properties.id.pattern, 'string');
-  assert.equal(properties.score.minimum, 1);
-  assert.equal(properties.score.maximum, 10);
-  assert.equal(properties.score.multipleOf, 0.5);
-  assert.equal(properties.tags.minItems, 1);
-  assert.equal(properties.tags.maxItems, 3);
+  assert.equal(properties.id.format, undefined);
+  assert.equal(properties.id.pattern, undefined);
+  assert.equal(properties.score.minimum, undefined);
+  assert.equal(properties.score.maximum, undefined);
+  assert.equal(properties.score.multipleOf, undefined);
+  assert.equal(properties.tags.minItems, undefined);
+  assert.equal(properties.tags.maxItems, undefined);
 });
