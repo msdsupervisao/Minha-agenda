@@ -59,6 +59,7 @@ export class AgentOrchestrator {
           ...details,
         });
         const verifiedEffect = toolResults.some((result) => result.risk !== 'read' && result.status === 'success' && result.verified);
+        const diagnostic = providerDiagnostic(details);
         return failed(
           this.provider.name,
           model,
@@ -68,8 +69,8 @@ export class AgentOrchestrator {
           verifiedEffect ? 'provider_error_after_verified_effect' : 'provider_error',
           verifiedEffect
             ? 'A ação foi executada e verificada, mas não consegui concluir a resposta do agente.'
-            : 'Não consegui consultar o provedor de IA.',
-          providerDiagnostic(details),
+            : providerFailureReply(diagnostic),
+          diagnostic,
         );
       }
 
@@ -253,4 +254,17 @@ function providerDiagnostic(details: Record<string, string | number>): AgentProv
   if (typeof details.resetProjectTokens === 'string') diagnostic.resetProjectTokens = details.resetProjectTokens;
   if (typeof details.retryAfterSeconds === 'number') diagnostic.retryAfterSeconds = details.retryAfterSeconds;
   return diagnostic;
+}
+
+function providerFailureReply(diagnostic: AgentProviderDiagnostic) {
+  if (diagnostic.status === 429 && diagnostic.type === 'requests') {
+    return 'A OpenAI reconheceu a chave, mas recusou a chamada por limite de requisições. Verifique os créditos e o limite do modelo no projeto da OpenAI.';
+  }
+  if (diagnostic.status === 429 && diagnostic.type === 'tokens') {
+    return 'A OpenAI reconheceu a chave, mas recusou a chamada por limite de tokens. Verifique os créditos e o limite do modelo no projeto da OpenAI.';
+  }
+  if (diagnostic.status === 429) {
+    return 'A OpenAI reconheceu a chave, mas o projeto está sem cota disponível. Verifique os créditos e os limites do projeto na OpenAI.';
+  }
+  return 'Não consegui consultar o provedor de IA.';
 }

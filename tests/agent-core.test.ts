@@ -212,6 +212,10 @@ test('falha do provedor expõe apenas diagnósticos seguros', async () => {
   const result = await new AgentOrchestrator(provider, new ToolRegistry()).run({ text: 'Teste.', context });
 
   assert.equal(result.kind, 'failed');
+  assert.equal(
+    result.reply,
+    'A OpenAI reconheceu a chave, mas recusou a chamada por limite de requisições. Verifique os créditos e o limite do modelo no projeto da OpenAI.',
+  );
   assert.deepEqual(result.kind === 'failed' && result.providerDiagnostic, {
     status: 429,
     code: 'rate_limit_exceeded',
