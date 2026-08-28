@@ -522,7 +522,7 @@ Executar nesta ordem:
 
 1. Revisar o diff local e manter os arquivos do Claude intactos.
 2. Aplicar as migrations `00600`, `00700` e `00800` em um ambiente Supabase de teste.
-3. Confirmar que `SUPABASE_SERVICE_ROLE_KEY` está configurada apenas no servidor.
+3. Confirmar que `SUPABASE_SECRET_KEY` está configurada apenas no servidor.
 4. Executar testes live do Supabase.
 5. Configurar `AGENT_V1_ENABLED=true` somente no ambiente de teste.
 6. Fazer um teste real da rota agentic com a OpenAI.

@@ -56,6 +56,7 @@ export class OpenAIResponsesAgentProvider implements AgentProvider {
         this.responses.create({
           model,
           store: false,
+          include: ['reasoning.encrypted_content'],
           instructions: request.instructions,
           input,
           tools: request.tools.map((tool) => ({

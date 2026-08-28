@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { z } from 'zod';
 import { ToolRegistry } from '../lib/agent/tool-registry';
 import { createClassTools, type ClassCatalog } from '../lib/agent/tools/classes';
 import { createNoticeScheduleTools, type ScheduleHandoffStore } from '../lib/agent/tools/notice-schedule';
 
-// Keywords de constraint que o modo strict da OpenAI recusa: se qualquer descriptor
-// as emitir, toda chamada ao provedor volta a falhar com 400 antes de interpretar
-// conteúdo. Este teste trava essa regressão sem precisar de chamada paga.
+// Keywords fora do subconjunto aceito pelo modo strict. O teste é propositalmente
+// independente da constante de produção para detectar regressões no sanitizador.
 const FORBIDDEN_KEYWORDS = new Set([
-  'format', 'pattern', 'minLength', 'maxLength',
-  'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf',
-  'minItems', 'maxItems', 'uniqueItems', 'contains', 'minContains', 'maxContains',
+  'minLength', 'maxLength',
+  'allOf', 'oneOf', 'not', 'dependentRequired', 'dependentSchemas', 'if', 'then', 'else',
+  'uniqueItems', 'contains', 'minContains', 'maxContains',
   'minProperties', 'maxProperties', 'patternProperties', 'propertyNames',
   'unevaluatedItems', 'unevaluatedProperties', 'default',
 ]);
@@ -75,4 +75,29 @@ test('descriptors preservam os invariantes exigidos pelo strict', () => {
       `${descriptor.name}: required deve conter todas as propriedades`,
     );
   }
+});
+
+test('descriptors preservam restrições suportadas pela OpenAI', () => {
+  const registry = new ToolRegistry([{
+    name: 'documented_constraints',
+    description: 'Valida as restrições documentadas para schemas strict.',
+    risk: 'read',
+    inputSchema: z.object({
+      id: z.string().uuid(),
+      score: z.number().min(1).max(10).multipleOf(0.5),
+      tags: z.array(z.string()).min(1).max(3),
+    }).strict(),
+    async execute() { return {}; },
+  }]);
+
+  const params = registry.descriptors()[0].parameters as Record<string, unknown>;
+  const properties = params.properties as Record<string, Record<string, unknown>>;
+
+  assert.equal(properties.id.format, 'uuid');
+  assert.equal(typeof properties.id.pattern, 'string');
+  assert.equal(properties.score.minimum, 1);
+  assert.equal(properties.score.maximum, 10);
+  assert.equal(properties.score.multipleOf, 0.5);
+  assert.equal(properties.tags.minItems, 1);
+  assert.equal(properties.tags.maxItems, 3);
 });

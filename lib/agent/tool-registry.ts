@@ -122,14 +122,16 @@ export class AgentToolExecutionError extends Error {
   }
 }
 
-// Constraints em nível de valor que o modo strict da OpenAI (Responses/Structured
-// Outputs) NÃO suporta: se enviadas, a API recusa o schema inteiro com 400 e toda
-// chamada do provedor falha. A validação real continua no Zod (inputSchema.safeParse
-// em execute); aqui apenas deixamos de anunciá-las à OpenAI.
+// O modo strict aceita apenas um subconjunto de JSON Schema. Removemos somente
+// palavras-chave fora desse subconjunto e preservamos restrições documentadas
+// como pattern, format, minimum/maximum, multipleOf e minItems/maxItems.
+// minLength/maxLength continuam fora do descriptor porque foram incompatíveis
+// com o contrato de ferramentas observado neste projeto. A validação completa
+// permanece no Zod (inputSchema.safeParse em execute).
 const STRICT_UNSUPPORTED_KEYWORDS = new Set([
-  'format', 'pattern', 'minLength', 'maxLength',
-  'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf',
-  'minItems', 'maxItems', 'uniqueItems', 'contains', 'minContains', 'maxContains',
+  'minLength', 'maxLength',
+  'allOf', 'oneOf', 'not', 'dependentRequired', 'dependentSchemas', 'if', 'then', 'else',
+  'uniqueItems', 'contains', 'minContains', 'maxContains',
   'minProperties', 'maxProperties', 'patternProperties', 'propertyNames',
   'unevaluatedItems', 'unevaluatedProperties', 'default',
 ]);

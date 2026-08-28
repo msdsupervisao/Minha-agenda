@@ -54,7 +54,7 @@ export class AgentOrchestrator {
         console.error('[agent] provider.generate falhou', {
           provider: this.provider.name,
           step,
-          message: error instanceof Error ? error.message : String(error),
+          ...providerErrorDetails(error),
         });
         const verifiedEffect = toolResults.some((result) => result.risk !== 'read' && result.status === 'success' && result.verified);
         return failed(
@@ -170,6 +170,26 @@ function addUsage(total: AgentTokenUsage, current: AgentTokenUsage) {
   total.outputTokens += current.outputTokens;
   total.totalTokens += current.totalTokens;
   total.cachedInputTokens += current.cachedInputTokens;
+}
+
+function providerErrorDetails(error: unknown): Record<string, string | number> {
+  const details: Record<string, string | number> = {
+    message: error instanceof Error ? error.message : String(error),
+  };
+  if (!error || typeof error !== 'object') return details;
+
+  const source = error as Record<string, unknown>;
+  if (typeof source.status === 'number') details.status = source.status;
+  for (const key of ['code', 'type', 'param'] as const) {
+    if (typeof source[key] === 'string') details[key] = source[key];
+  }
+  const requestId = typeof source.request_id === 'string'
+    ? source.request_id
+    : typeof source.requestID === 'string'
+      ? source.requestID
+      : null;
+  if (requestId) details.requestId = requestId;
+  return details;
 }
 
 function failed(

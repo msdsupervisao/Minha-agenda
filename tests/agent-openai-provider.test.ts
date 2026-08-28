@@ -28,7 +28,7 @@ test('adaptador Responses envia funções estritas e interpreta tool calls', asy
         return {
           output_text: '',
           output: [
-            { type: 'reasoning', id: 'reasoning-1', summary: [] },
+            { type: 'reasoning', id: 'reasoning-1', summary: [], encrypted_content: 'encrypted-reasoning' },
             { type: 'function_call', call_id: 'call-1', name: 'find_classes', arguments: '{"query":"tecnologia"}' },
           ],
           usage: { input_tokens: 30, output_tokens: 8, total_tokens: 38, input_tokens_details: { cached_tokens: 4 } },
@@ -44,6 +44,7 @@ test('adaptador Responses envia funções estritas e interpreta tool calls', asy
 
   const request = captured[0];
   assert.equal(request.store, false);
+  assert.deepEqual(request.include, ['reasoning.encrypted_content']);
   assert.equal(request.parallel_tool_calls, false);
   assert.equal(request.tool_choice, 'auto');
   const tools = request.tools as Array<{ type: string; strict: boolean; name: string }>;
@@ -68,7 +69,7 @@ test('adaptador preserva output anterior e associa resultado pelo call_id', asyn
           return {
             output_text: '',
             output: [
-              { type: 'reasoning', id: 'reasoning-1', summary: [] },
+              { type: 'reasoning', id: 'reasoning-1', summary: [], encrypted_content: 'encrypted-reasoning' },
               { type: 'function_call', call_id: 'call-1', name: 'find_classes', arguments: '{"query":"tecnologia"}' },
             ],
           };
@@ -92,7 +93,8 @@ test('adaptador preserva output anterior e associa resultado pelo call_id', asyn
 
   assert.equal(second.text, 'Encontrei Kids Tecnologia.');
   const secondInput = captured[1].input as Array<Record<string, unknown>>;
-  assert.ok(secondInput.some((item) => item.type === 'reasoning' && item.id === 'reasoning-1'));
+  const reasoning = secondInput.find((item) => item.type === 'reasoning' && item.id === 'reasoning-1');
+  assert.equal(reasoning?.encrypted_content, 'encrypted-reasoning');
   assert.ok(secondInput.some((item) => item.type === 'function_call' && item.call_id === 'call-1'));
   const output = secondInput.find((item) => item.type === 'function_call_output');
   assert.equal(output?.call_id, 'call-1');
