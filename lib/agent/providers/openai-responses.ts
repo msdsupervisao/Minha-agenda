@@ -26,21 +26,29 @@ type ResponsesClient = {
 };
 type OpenAIContinuation = { kind: 'openai_responses'; input: unknown[] };
 
+export type OpenAIResponsesAgentProviderOptions = {
+  apiKey?: string;
+  model?: string;
+  timeoutMs?: number;
+  baseURL?: string | null;
+  responses?: ResponsesClient;
+};
+
+export function buildOpenAIResponsesClientOptions(options: OpenAIResponsesAgentProviderOptions) {
+  return {
+    apiKey: options.apiKey,
+    baseURL: options.baseURL?.trim() || undefined,
+    timeout: options.timeoutMs ?? 15000,
+    maxRetries: 1,
+  };
+}
+
 export class OpenAIResponsesAgentProvider implements AgentProvider {
   readonly name = 'openai';
   private readonly responses: ResponsesClient;
 
-  constructor(private readonly options: {
-    apiKey?: string;
-    model?: string;
-    timeoutMs?: number;
-    responses?: ResponsesClient;
-  }) {
-    const client = options.responses ? null : new OpenAI({
-      apiKey: options.apiKey,
-      timeout: options.timeoutMs ?? 15000,
-      maxRetries: 1,
-    });
+  constructor(private readonly options: OpenAIResponsesAgentProviderOptions) {
+    const client = options.responses ? null : new OpenAI(buildOpenAIResponsesClientOptions(options));
     this.responses = options.responses || (client!.responses as unknown as ResponsesClient);
   }
 
@@ -82,13 +90,13 @@ export class OpenAIResponsesAgentProvider implements AgentProvider {
         provider: this.name,
         model,
         text: response.output_text || '',
-        toolCalls: parseToolCalls(output),
+        toolCalls: parseToolCalls(output, request.tools),
         // Este modelo emite um envelope reasoning vazio mesmo sem consumir
         // reasoning tokens. Não o reenvie em um fluxo stateless (store:false),
         // pois seu id não fica armazenado.
         continuation: {
           kind: 'openai_responses',
-          input: [...input, ...output.filter((item) => item.type !== 'reasoning')],
+          input: [...input, ...output],
         } satisfies OpenAIContinuation,
         usage: normalizeUsage(response.usage),
       };
@@ -100,7 +108,7 @@ export class OpenAIResponsesAgentProvider implements AgentProvider {
 function buildInput(request: AgentProviderRequest): unknown[] {
   const continuation = asContinuation(request.continuation);
   const initial = continuation
-    ? continuation.input
+    ? continuation.input.filter((item) => !(item && typeof item === 'object' && (item as { type?: unknown }).type === 'reasoning'))
     : request.messages.map((message) => ({ role: message.role, content: message.content }));
   const results = (request.toolResults || []).map((result) => ({
     type: 'function_call_output',
@@ -118,17 +126,128 @@ function asContinuation(value: unknown): OpenAIContinuation | null {
     : null;
 }
 
-function parseToolCalls(output: OpenAIOutputItem[]): AgentToolCall[] {
+function parseToolCalls(
+  output: OpenAIOutputItem[],
+  toolDescriptors: { name: string; parameters: JsonObject }[],
+): AgentToolCall[] {
   return output.filter((item) => item.type === 'function_call').map((item) => {
-    if (typeof item.call_id !== 'string' || typeof item.name !== 'string' || typeof item.arguments !== 'string') {
+    if (typeof item.call_id !== 'string' || typeof item.arguments !== 'string') {
       throw new Error('agent_provider_invalid_tool_call');
     }
     let parsed: unknown;
     try { parsed = JSON.parse(item.arguments); }
     catch { throw new Error('agent_provider_invalid_tool_arguments'); }
     if (!isJsonObject(parsed)) throw new Error('agent_provider_invalid_tool_arguments');
-    return { callId: item.call_id, name: item.name, arguments: parsed };
+
+    const name = resolveToolName(item, parsed, toolDescriptors);
+    if (!name) throw new Error('agent_provider_invalid_tool_call');
+    return { callId: item.call_id, name, arguments: parsed };
   });
+}
+
+function resolveToolName(
+  item: OpenAIOutputItem,
+  parsedArguments: JsonObject,
+  toolDescriptors: { name: string; parameters: JsonObject }[],
+): string | null {
+  if (typeof item.name === 'string' && item.name.trim()) return item.name;
+  if (toolDescriptors.length === 1) return toolDescriptors[0].name;
+
+  const matches = toolDescriptors.filter((tool) => matchesSchema(parsedArguments, tool.parameters));
+  return matches.length === 1 ? matches[0].name : null;
+}
+
+function matchesSchema(value: unknown, schema: JsonObject): boolean {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return false;
+  if (Array.isArray((schema as { anyOf?: unknown }).anyOf)) {
+    return (schema as { anyOf: JsonObject[] }).anyOf.some((candidate) => matchesSchema(value, candidate));
+  }
+  if (Array.isArray((schema as { oneOf?: unknown }).oneOf)) {
+    return (schema as { oneOf: JsonObject[] }).oneOf.some((candidate) => matchesSchema(value, candidate));
+  }
+  if (Array.isArray((schema as { allOf?: unknown }).allOf)) {
+    return (schema as { allOf: JsonObject[] }).allOf.every((candidate) => matchesSchema(value, candidate));
+  }
+
+  if (Object.prototype.hasOwnProperty.call(schema, 'enum')) {
+    const enumValues = (schema as { enum?: unknown[] }).enum;
+    return Array.isArray(enumValues) ? enumValues.some((candidate) => deepEqual(candidate, value)) : false;
+  }
+
+  const type = schema.type;
+  if (Array.isArray(type)) return type.some((entry) => typeof entry === 'string' && matchesTypedSchema(value, entry, schema));
+  if (typeof type === 'string') return matchesTypedSchema(value, type, schema);
+
+  if (schema.properties || schema.required || schema.additionalProperties !== undefined) {
+    return matchesTypedSchema(value, 'object', schema);
+  }
+  return true;
+}
+
+function matchesTypedSchema(value: unknown, type: string, schema: JsonObject): boolean {
+  switch (type) {
+    case 'object':
+      return matchesObjectSchema(value, schema);
+    case 'array':
+      return Array.isArray(value)
+        && (!schema.items || value.every((entry) => matchesSchema(entry, schema.items as JsonObject)));
+    case 'string':
+      return typeof value === 'string';
+    case 'number':
+      return typeof value === 'number' && Number.isFinite(value);
+    case 'integer':
+      return typeof value === 'number' && Number.isInteger(value);
+    case 'boolean':
+      return typeof value === 'boolean';
+    case 'null':
+      return value === null;
+    default:
+      return true;
+  }
+}
+
+function matchesObjectSchema(value: unknown, schema: JsonObject): boolean {
+  if (!isJsonObject(value)) return false;
+  const properties = isJsonObject(schema.properties) ? schema.properties : {};
+  const required = Array.isArray(schema.required)
+    ? schema.required.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+
+  for (const key of required) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) return false;
+  }
+
+  for (const [key, propertySchema] of Object.entries(properties)) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+    if (!matchesSchema(value[key], propertySchema as JsonObject)) return false;
+  }
+
+  if (schema.additionalProperties === false) {
+    for (const key of Object.keys(value)) {
+      if (!Object.prototype.hasOwnProperty.call(properties, key)) return false;
+    }
+  } else if (isJsonObject(schema.additionalProperties)) {
+    for (const key of Object.keys(value)) {
+      if (Object.prototype.hasOwnProperty.call(properties, key)) continue;
+      if (!matchesSchema(value[key], schema.additionalProperties as JsonObject)) return false;
+    }
+  }
+
+  return true;
+}
+
+function deepEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return left.length === right.length && left.every((entry, index) => deepEqual(entry, right[index]));
+  }
+  if (isJsonObject(left) && isJsonObject(right)) {
+    const leftKeys = Object.keys(left);
+    const rightKeys = Object.keys(right);
+    return leftKeys.length === rightKeys.length
+      && leftKeys.every((key) => Object.prototype.hasOwnProperty.call(right, key) && deepEqual(left[key], right[key]));
+  }
+  return false;
 }
 
 function isJsonObject(value: unknown): value is JsonObject {

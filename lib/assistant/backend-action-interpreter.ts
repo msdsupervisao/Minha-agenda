@@ -16,7 +16,7 @@ export class BackendActionInterpreter implements ActionInterpreter {
     });
     const payload = await safeJson(response);
     if (!response.ok) throw new Error(typeof payload.error === 'string' ? payload.error : 'O cérebro da assistente não respondeu.');
-    if (payload.provider !== 'openai' && payload.provider !== 'local') throw new Error('O backend retornou um provider inválido.');
+    if (typeof payload.provider !== 'string' || !['openai', 'omniroute', 'local'].includes(payload.provider)) throw new Error('O backend retornou um provider inválido.');
     return {
       action: (payload.action || null) as AssistantAction | null,
       provider: payload.provider as AiProviderName,

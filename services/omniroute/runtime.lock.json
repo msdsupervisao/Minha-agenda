@@ -1,0 +1,9 @@
+{
+  "name": "omniroute",
+  "version": "3.8.50",
+  "nodeVersion": "22.22.2",
+  "entry": "production/node_modules/omniroute/dist/server-ws.mjs",
+  "protocol": "chat/completions",
+  "host": "127.0.0.1",
+  "port": 20128
+}

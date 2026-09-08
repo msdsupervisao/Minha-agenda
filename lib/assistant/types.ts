@@ -20,7 +20,7 @@ export type EntityType = 'contact' | 'expense' | 'task' | 'reminder' | 'event' |
 export type Source = 'voice' | 'text';
 export type Recurrence = 'daily' | 'weekly' | 'monthly';
 export type DateRange = 'today' | 'tomorrow' | 'week' | 'next_week' | 'month' | 'next_month' | 'all';
-export type AiProviderName = 'openai' | 'local';
+export type AiProviderName = 'openai' | 'omniroute' | 'local';
 
 export type AssistantAction = {
   id: string;

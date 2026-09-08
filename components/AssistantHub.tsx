@@ -8,7 +8,8 @@ import type { ActivityItem, AssistantAction, AssistantState } from '@/lib/assist
 import { buildWhatsAppHandoffUrl } from '@/lib/assistant/whatsapp-handoff';
 import type { ResolvedWeeklyNotice } from '@/lib/notices/weekly';
 import { sendAgentTurn, verifiedScheduleHandoff, type AgentClientResult } from '@/lib/agent/client';
-import { selectPortugueseVoice, speechTextForReply } from '@/lib/assistant/speech';
+import type { AgentProgress } from '@/lib/agent/contracts';
+import { selectPortugueseVoice, speechTextForReply, stripMarkdownForSpeech } from '@/lib/assistant/speech';
 import GyroCore from './GyroCore';
 import styles from './AssistantHub.module.css';
 
@@ -23,13 +24,13 @@ const labels: Record<AssistantState, string> = {
   action: 'Organizando para você…',
   success: 'Feito',
   confirmation: 'Confirma esta ação?',
-  error: 'Não entendi ainda',
+  error: 'Não foi possível concluir',
 };
 
 const quickCommands = [
-  'Aviso de Design',
-  'Aviso de Informática',
-  'Aviso de Kids',
+  'Liste minhas turmas',
+  'O que tenho na agenda hoje?',
+  'Procure a turma Kids Tecnologia',
 ];
 
 function wait(time: number) { return new Promise((resolve) => window.setTimeout(resolve, time)); }
@@ -42,7 +43,8 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
   const [pending, setPending] = useState<AssistantAction | null>(null);
   const [recent, setRecent] = useState<ActivityItem[]>([]);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [providerNotice, setProviderNotice] = useState(agentPilot ? 'Núcleo agentic em piloto.' : 'Verificando IA…');
+  const [providerNotice, setProviderNotice] = useState(agentPilot ? 'Verificando conexão…' : 'Verificando IA…');
+  const [lastRun, setLastRun] = useState<AgentClientResult | null>(null);
   const [appDeepLink, setAppDeepLink] = useState<string | null>(null);
   const [weeklyNotice, setWeeklyNotice] = useState<ResolvedWeeklyNotice | null>(null);
   const [agentApprovalId, setAgentApprovalId] = useState<string | null>(null);
@@ -54,17 +56,21 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
     const assistant = createConversationClient(dataProvider);
     engine.current = assistant;
     void assistant.activities().then(setRecent).catch(() => setReply('Não consegui carregar suas ações recentes.'));
-    if (!agentPilot) void getBackendAiStatus().then((status) => setProviderNotice(status.notice)).catch(() => setProviderNotice('Modo indisponível.'));
-    return () => { if (timer.current) window.clearTimeout(timer.current); };
+    const checkStatus = () => { void getBackendAiStatus().then((status) => setProviderNotice(status.notice)).catch(() => setProviderNotice('Conexão indisponível.')); };
+    checkStatus();
+    const healthTimer = window.setInterval(checkStatus, 30000);
+    return () => { if (timer.current) window.clearTimeout(timer.current); window.clearInterval(healthTimer); };
   }, [agentPilot, dataProvider]);
 
   function speak(text: string) {
     if (!('speechSynthesis' in window)) return;
     const synthesis = window.speechSynthesis;
     synthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
+    const spokenText = stripMarkdownForSpeech(text);
+    if (!spokenText) return;
+    const utterance = new SpeechSynthesisUtterance(spokenText);
     utterance.lang = 'pt-BR';
-    utterance.rate = 1.3;
+    utterance.rate = 1.05;
     utterance.pitch = 1;
     const voice = selectPortugueseVoice(synthesis.getVoices());
     if (voice) utterance.voice = voice;
@@ -81,7 +87,9 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
 
   async function processCommand(command: string, source: 'voice' | 'text') {
     const clean = command.trim();
-    if (!clean) return;
+    if (!clean || state === 'processing' || state === 'action' || agentApprovalId) return;
+    if (timer.current) window.clearTimeout(timer.current);
+    setLastRun(null);
     scheduleWatch.current += 1;
     setAppDeepLink(null);
     setAgentApprovalId(null);
@@ -92,7 +100,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
     await wait(320);
 
     if (agentPilot) {
-      try { await handleAgentResult(await sendAgentTurn({ text: clean, source })); }
+      try { await handleAgentResult(await sendAgentTurn({ text: clean, source }, handleProgress)); }
       catch (error) {
         setState('error');
         setReply(error instanceof Error ? error.message : 'Não consegui consultar o agente.');
@@ -168,7 +176,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
       try {
         const approvalId = agentApprovalId;
         setAgentApprovalId(null);
-        await handleAgentResult(await sendAgentTurn({ approvalId, decision: 'approve' }));
+        await handleAgentResult(await sendAgentTurn({ approvalId, decision: 'approve' }, handleProgress));
       } catch (error) {
         setState('error');
         setReply(error instanceof Error ? error.message : 'Não consegui confirmar a ação.');
@@ -217,6 +225,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
   }
 
   async function handleAgentResult(result: AgentClientResult) {
+    setLastRun(result);
     if (result.kind === 'approval_required' && result.approvalId) {
       setAgentApprovalId(result.approvalId);
       setState('confirmation');
@@ -250,6 +259,12 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
       return;
     }
     finish(result.reply);
+  }
+
+  function handleProgress(event: AgentProgress) {
+    setState(event.phase === 'thinking' ? 'processing' : 'action');
+    setReply(event.phase === 'thinking' ? (event.step === 1 ? 'Analisando seu pedido e o contexto.' : 'Preparando a resposta com o resultado recebido.')
+      : event.phase === 'verified' ? 'Resultado conferido na fonte.' : 'Consultando ou executando a ferramenta necessária.');
   }
 
   async function watchScheduleStatus(id: string, watchId: number) {
@@ -313,7 +328,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
     </aside>
 
     <section className={styles.hero}>
-      <p className={styles.eyebrow}>assistente pessoal <span className={styles.providerNotice}>• {providerNotice} • {dataProvider === 'supabase' ? 'Supabase ativo.' : 'Dados locais.'}</span></p>
+      <p className={styles.eyebrow}>seu assistente pessoal <span className={styles.providerNotice}>• {providerNotice} • {dataProvider === 'supabase' ? 'Memória conectada.' : 'Dados locais.'}</span></p>
       <h1>O que vamos<br />resolver <em>agora?</em></h1>
       <div className={`${styles.coreArea} ${styles[`state${state[0].toUpperCase()}${state.slice(1)}`]}`}>
         <GyroCore state={state} onPress={startVoice} />
@@ -323,6 +338,12 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
       <p className={styles.stateLabel}>{labels[state]}</p>
       {transcript && <p className={styles.transcript}>“{transcript}”</p>}
       <p className={styles.reply} role="status">{reply}</p>
+      {lastRun && <details className={styles.executionDetails}>
+        <summary>Detalhes da execução</summary>
+        {lastRun.executions?.map((execution, index) => <p key={index}>{execution.upstreamProvider || 'Provedor não informado'} · {execution.model || execution.requestedModel} · {(execution.latencyMs / 1000).toFixed(1)}s{execution.fallbackUsed ? ' · rota de reserva' : ''}</p>)}
+        {lastRun.toolResults?.map((tool) => <p key={tool.callId}>{tool.toolName}: {tool.verified ? 'verificado' : tool.status === 'approval_required' ? 'aguardando confirmação' : 'não concluído'}</p>)}
+        <small>Execução: {lastRun.runId || 'sem identificador'}</small>
+      </details>}
 
       {weeklyNotice && <section className={`${styles.confirmation} ${styles.noticePicker}`} aria-label={`Modelos de ${weeklyNotice.className}`}>
         <p><b>{weeklyNotice.className}</b> · destino: {weeklyNotice.recipientName}</p>
@@ -351,7 +372,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
 
       <form className={styles.commandForm} onSubmit={submit}>
         <label htmlFor="command">Escreva o que você precisa</label>
-        <div><input id="command" value={input} onChange={(event) => setInput(event.target.value)} placeholder="Ex.: me lembre de..." /><button type="submit" aria-label="Processar comando"><ArrowIcon /></button></div>
+        <div><input id="command" value={input} onChange={(event) => setInput(event.target.value)} disabled={state === 'processing' || state === 'action' || Boolean(agentApprovalId)} placeholder="Ex.: o que tenho para hoje?" /><button type="submit" disabled={state === 'processing' || state === 'action' || Boolean(agentApprovalId)} aria-label="Processar comando"><ArrowIcon /></button></div>
       </form>
     </section>
 

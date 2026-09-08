@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { z } from 'zod';
-import { AgentOrchestrator, buildAgentInstructions } from '../lib/agent/orchestrator';
+import { AgentOrchestrator, buildAgentInstructions, hasBlockingToolFailure } from '../lib/agent/orchestrator';
 import { ToolRegistry } from '../lib/agent/tool-registry';
 import type {
   AgentExecutionContext,
@@ -9,6 +9,7 @@ import type {
   AgentProviderRequest,
   AgentProviderResponse,
   AgentTool,
+  AgentToolResult,
   JsonObject,
 } from '../lib/agent/contracts';
 import { emptyAgentContextState, emptyAgentUsage } from '../lib/agent/contracts';
@@ -214,7 +215,7 @@ test('falha do provedor expõe apenas diagnósticos seguros', async () => {
   assert.equal(result.kind, 'failed');
   assert.equal(
     result.reply,
-    'A OpenAI reconheceu a chave, mas recusou a chamada por limite de requisições. Verifique os créditos e o limite do modelo no projeto da OpenAI.',
+    'O provedor atingiu o limite de requisições. Aguarde a liberação da cota para tentar novamente.',
   );
   assert.deepEqual(result.kind === 'failed' && result.providerDiagnostic, {
     status: 429,
@@ -265,6 +266,56 @@ test('instruções centrais exigem intenção, ferramentas e verificação', () 
   assert.match(prompt, /scheduleKind=delay_minutes/);
   assert.match(prompt, /<contexto_atual>/);
   assert.doesNotMatch(prompt, /comando exato/);
+});
+
+test('uma leitura bem-sucedida não encobre falha em outra ferramenta ou outra consulta', () => {
+  const failure: AgentToolResult = { callId: 'a', toolName: 'find_classes', arguments: { query: 'Kids' }, status: 'error', output: null, verified: false, risk: 'read', errorCode: 'tool_execution_failed' };
+  const success: AgentToolResult = { ...failure, callId: 'b', status: 'success', verified: true, errorCode: undefined };
+  assert.equal(hasBlockingToolFailure([failure, { ...success, toolName: 'list_agenda' }]), true);
+  assert.equal(hasBlockingToolFailure([failure, { ...success, arguments: { query: 'Design' } }]), true);
+  assert.equal(hasBlockingToolFailure([failure, success]), false);
+  assert.equal(hasBlockingToolFailure([{ ...failure, errorCode: 'policy_denied' }, success]), true);
+  assert.equal(hasBlockingToolFailure([{ ...failure, risk: 'low' }, success]), true);
+});
+
+test('retomada preserva todos os resultados do lote e não repete efeito já verificado', async () => {
+  let reads = 0;
+  let writes = 0;
+  const registry = new ToolRegistry([
+    tool({ name: 'read_data', inputSchema: z.object({}).strict(), async execute() { reads++; return { value: 'real' }; } }),
+    tool({ name: 'write_data', risk: 'external', inputSchema: z.object({ value: z.string() }).strict(), async execute() { writes++; return { id: 'saved' }; }, async verify(output) { return { verified: true, evidence: output }; } }),
+  ]);
+  const pending = await new AgentOrchestrator(new ScriptedProvider([response({
+    toolCalls: [{ callId: 'read', name: 'read_data', arguments: {} }, { callId: 'write', name: 'write_data', arguments: { value: 'real' } }],
+    continuation: { transcript: 'complete' },
+  })]), registry).run({ text: 'Consulte e salve.', context });
+  assert.equal(pending.kind, 'approval_required');
+  assert.equal(writes, 0);
+  if (pending.kind !== 'approval_required') return;
+  const resumed = new ScriptedProvider([
+    response({ toolCalls: [{ callId: 'duplicate', name: 'write_data', arguments: { value: 'real' } }] }),
+    response({ text: 'Salvo.' }),
+  ]);
+  const result = await new AgentOrchestrator(resumed, registry).run({ text: 'Confirmo.', context, resume: { pendingCalls: pending.pendingCalls, continuation: pending.continuation } });
+  assert.equal(result.kind, 'completed');
+  assert.equal(reads, 1);
+  assert.equal(writes, 1);
+  assert.deepEqual(resumed.requests[0].continuation, { transcript: 'complete' });
+  assert.deepEqual(resumed.requests[0].toolResults?.map((item) => item.callId), ['read', 'write']);
+  assert.equal(result.toolResults.every((item) => item.verified), true);
+});
+
+test('efeito incerto encerra o ciclo antes de uma nova tentativa automática', async () => {
+  let writes = 0;
+  const registry = new ToolRegistry([tool({ name: 'save', risk: 'low', inputSchema: z.object({}).strict(), async execute() { writes++; return { id: 'saved' }; }, async verify() { return { verified: false }; } })]);
+  const provider = new ScriptedProvider([
+    response({ toolCalls: [{ callId: 'first', name: 'save', arguments: {} }, { callId: 'second', name: 'save', arguments: {} }] }),
+    response({ toolCalls: [{ callId: 'third', name: 'save', arguments: {} }] }),
+  ]);
+  const result = await new AgentOrchestrator(provider, registry).run({ text: 'Salve.', context });
+  assert.equal(result.kind, 'failed');
+  assert.equal(writes, 1);
+  assert.equal(provider.requests.length, 1);
 });
 
 class ScriptedProvider implements AgentProvider {

@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { OpenAIResponsesAgentProvider } from '../lib/agent/providers/openai-responses';
+import {
+  buildOpenAIResponsesClientOptions,
+  OpenAIResponsesAgentProvider,
+} from '../lib/agent/providers/openai-responses';
 import type { AgentProviderRequest, AgentToolResult } from '../lib/agent/contracts';
 
 const baseRequest: AgentProviderRequest = {
@@ -21,6 +24,7 @@ const baseRequest: AgentProviderRequest = {
 test('adaptador Responses envia funções estritas e interpreta tool calls', async () => {
   const captured: Record<string, unknown>[] = [];
   const provider = new OpenAIResponsesAgentProvider({
+    baseURL: 'http://127.0.0.1:20128/v1',
     model: 'gpt-5.4-mini',
     responses: {
       async create(params) {
@@ -55,6 +59,19 @@ test('adaptador Responses envia funções estritas e interpreta tool calls', asy
     description: 'Busca turmas cadastradas.',
     parameters: baseRequest.tools[0].parameters,
     strict: true,
+  });
+});
+
+test('configuração do cliente Responses inclui baseURL explícito', () => {
+  assert.deepEqual(buildOpenAIResponsesClientOptions({
+    apiKey: 'test-key',
+    baseURL: 'http://127.0.0.1:20128/v1',
+    timeoutMs: 2200,
+  }), {
+    apiKey: 'test-key',
+    baseURL: 'http://127.0.0.1:20128/v1',
+    timeout: 2200,
+    maxRetries: 1,
   });
 });
 

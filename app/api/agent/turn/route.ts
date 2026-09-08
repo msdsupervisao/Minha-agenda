@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { resolveTimezone } from '@/lib/data/server-timezone';
-import type { AgentRunResult } from '@/lib/agent/contracts';
+import type { AgentRunResult, AgentProgress } from '@/lib/agent/contracts';
+import { randomUUID } from 'node:crypto';
 import { persistAgentTurn } from '@/lib/agent/context-builder';
 import { SupabasePendingApprovalStore } from '@/lib/agent/pending-approval-store';
 import { AgentPilotUnavailableError, agentPilotEnabled, runAgentPilot } from '@/lib/agent/server-agent';
+import { parseAiRouteChainCookieHeader } from '@/lib/assistant/ai-route';
 import { getAuthenticatedUser } from '@/lib/supabase/auth';
 import { getSupabasePublicConfig } from '@/lib/supabase/config';
 import { createServiceClient, serviceConfigured } from '@/lib/supabase/service';
@@ -25,6 +27,27 @@ const TurnSchema = z.union([
 ]);
 
 export async function POST(request: Request) {
+  if (!request.headers.get('accept')?.includes('application/x-ndjson')) return handleTurn(request);
+  // Stream execution status, never partial model claims. Tool effects are only
+  // presented as successful after the application's verifier has run.
+  const encoder = new TextEncoder();
+  let disconnected = false;
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (event: unknown) => { if (!disconnected) controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`)); };
+      try {
+        const response = await handleTurn(request, (progress) => send({ type: 'progress', progress }));
+        send({ type: 'result', result: await response.json(), httpStatus: response.status });
+      } catch {
+        send({ type: 'result', httpStatus: 500, result: { error: 'Não foi possível concluir o turno do agente.' } });
+      } finally { if (!disconnected) controller.close(); }
+    },
+    cancel() { disconnected = true; },
+  });
+  return new Response(stream, { headers: { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store', 'x-accel-buffering': 'no' } });
+}
+
+async function handleTurn(request: Request, onProgress?: (event: AgentProgress) => void) {
   if (!agentPilotEnabled()) return NextResponse.json({ error: 'Piloto do agente desativado.' }, { status: 404 });
   if (!getSupabasePublicConfig().configured) return NextResponse.json({ error: 'Supabase não configurado.' }, { status: 503 });
   const user = await getAuthenticatedUser();
@@ -38,6 +61,7 @@ export async function POST(request: Request) {
 
   try {
     const client = await createClient();
+    const routeChain = parseAiRouteChainCookieHeader(request.headers.get('cookie'));
     if ('approvalId' in parsed.data) {
       if (!serviceConfigured()) return NextResponse.json({ error: 'Armazenamento seguro de aprovação indisponível.' }, { status: 503 });
       const store = new SupabasePendingApprovalStore(createServiceClient());
@@ -58,7 +82,7 @@ export async function POST(request: Request) {
           'O usuário aprovou exatamente a ação pendente.',
           pending.source,
           pending.timezone,
-          { resume: { pendingCalls: pending.toolCalls, continuation: pending.continuation } },
+          { resume: { pendingCalls: pending.toolCalls, continuation: pending.continuation }, onProgress, routeChain },
         );
       } catch (error) {
         await store.finish(pending.id, user.id, 'failed');
@@ -70,7 +94,7 @@ export async function POST(request: Request) {
     }
 
     const timezone = await resolveTimezone();
-    const result = await runAgentPilot(client, user.id, parsed.data.text, parsed.data.source, timezone);
+    const result = await runAgentPilot(client, user.id, parsed.data.text, parsed.data.source, timezone, { onProgress, routeChain });
     await persistAgentTurn(client, user.id, { userText: parsed.data.text, result });
     const store = result.kind === 'approval_required' && serviceConfigured()
       ? new SupabasePendingApprovalStore(createServiceClient())
@@ -87,7 +111,7 @@ export async function POST(request: Request) {
       timestamp: new Date().toISOString(),
       operation: 'agent_turn',
       result: 'error',
-      error: error instanceof Error ? error.message : 'unknown',
+      error: error instanceof Error ? error.name : 'unknown',
     }));
     return NextResponse.json({ error: 'Não foi possível concluir o turno do agente.' }, { status: 500 });
   }
@@ -100,8 +124,15 @@ async function respondWithResult(
   timezone: string,
   store: SupabasePendingApprovalStore | null,
 ) {
+  const runId = randomUUID();
+  console.info('[minha-agenda:run]', JSON.stringify({
+    runId, result: result.kind, provider: result.provider, model: result.model,
+    executions: result.executions, steps: result.steps, usage: result.usage,
+    tools: result.toolResults.map((tool) => ({ name: tool.toolName, status: tool.status, verified: tool.verified, errorCode: tool.errorCode })),
+    errorCode: result.kind === 'failed' ? result.errorCode : null,
+  }));
   if (result.kind !== 'approval_required') {
-    return NextResponse.json(result, noStore());
+    return NextResponse.json({ ...result, runId }, noStore());
   }
   if (!store) return NextResponse.json({ error: 'Armazenamento seguro de aprovação indisponível.' }, { status: 503 });
   const approval = await store.create({
@@ -121,6 +152,8 @@ async function respondWithResult(
     model: result.model,
     steps: result.steps,
     usage: result.usage,
+    executions: result.executions,
+    runId,
   }, noStore());
 }
 

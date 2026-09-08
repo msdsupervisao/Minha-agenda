@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { AiProviderError } from '@/lib/assistant/ai-provider';
 import { getAiRuntimeConfig } from '@/lib/assistant/ai-config';
+import { parseAiRouteChainCookieHeader } from '@/lib/assistant/ai-route';
 import { interpretOnServer } from '@/lib/assistant/ai-runtime';
 import { getSupabasePublicConfig } from '@/lib/supabase/config';
 import { getAuthenticatedUser } from '@/lib/supabase/auth';
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
   const parsed = RequestSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: 'Comando inválido.' }, { status: 400 });
 
-  const config = getAiRuntimeConfig();
+  const config = getAiRuntimeConfig(undefined, parseAiRouteChainCookieHeader(request.headers.get('cookie')));
   try {
     const timezone = await resolveTimezone();
     const result = await interpretOnServer({

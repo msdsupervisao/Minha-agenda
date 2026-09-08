@@ -108,6 +108,19 @@ export type AgentProviderResponse = {
   toolCalls: AgentToolCall[];
   continuation?: unknown;
   usage: AgentTokenUsage;
+  execution?: AgentModelExecution;
+};
+
+export type AgentModelExecution = {
+  gateway: string;
+  requestedModel: string;
+  model: string | null;
+  upstreamProvider: string | null;
+  providerEvidence: 'response_header' | 'direct' | 'unavailable';
+  latencyMs: number;
+  requestId: string | null;
+  fallbackUsed: boolean;
+  attempts: Array<{ model: string; status: 'success' | 'failed'; errorCode?: string }>;
 };
 
 export interface AgentProvider {
@@ -126,12 +139,19 @@ export type AgentRunInput = {
   };
 };
 
+export type AgentProgress = {
+  phase: 'thinking' | 'executing' | 'verified';
+  step: number;
+  toolName?: string;
+};
+
 type AgentRunBase = {
   provider: string;
   model: string | null;
   steps: number;
   toolResults: AgentToolResult[];
   usage: AgentTokenUsage;
+  executions?: AgentModelExecution[];
 };
 
 export type AgentRunResult = AgentRunBase & (

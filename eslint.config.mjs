@@ -28,5 +28,7 @@ export default defineConfig([
     'mobile/dist/**',
     'mobile/android/**',
     'next-env.d.ts',
+    '.runtime/**',
+    'services/omniroute/.runtime/**',
   ]),
 ]);

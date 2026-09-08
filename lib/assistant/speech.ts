@@ -17,5 +17,28 @@ export function selectPortugueseVoice<T extends SpeechVoiceLike>(voices: readonl
 export function speechTextForReply(text: string): string {
   const normalized = text.trim();
   const schedule = normalized.match(/confirmar o agendamento[\s\S]*?\bem\s+([^?]+)\?/i);
-  return schedule?.[1] ? `Horário do agendamento: ${schedule[1].trim()}.` : normalized;
+  const spoken = schedule?.[1] ? `Horário do agendamento: ${schedule[1].trim()}.` : normalized;
+  return stripMarkdownForSpeech(spoken);
+}
+
+export function stripMarkdownForSpeech(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s{0,3}>\s?/gm, '')
+    .replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    .replace(/~~([^~]+)~~/g, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\r?\n+/g, '. ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/([:!?])\s*\./g, '$1')
+    .replace(/\.{2,}/g, '.')
+    .trim();
 }

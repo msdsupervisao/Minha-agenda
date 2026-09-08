@@ -19,6 +19,7 @@ export async function runPersistentConversation(
   text: string,
   source: Source,
   timezone = appTimezone(),
+  options: { routeChain?: readonly string[] | null } = {},
 ) {
   const persistent = new SupabaseMemoryRepository(client, userId);
   const before = await persistent.load();
@@ -91,7 +92,7 @@ export async function runPersistentConversation(
         now: new Date(),
         timezone,
         context,
-      }, { config: getAiRuntimeConfig() });
+      }, { config: getAiRuntimeConfig(undefined, options.routeChain || null) });
       return aiResult;
     },
   };

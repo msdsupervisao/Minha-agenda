@@ -6,10 +6,16 @@
     "node": ">=20.9.0"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/system.mjs dev",
+    "dev:web": "next dev --hostname 127.0.0.1",
     "build": "next build",
-    "start": "next start",
+    "start": "node scripts/system.mjs start",
+    "start:background": "node scripts/system.mjs background",
+    "stop": "node scripts/system.mjs stop",
+    "health": "node scripts/system.mjs health",
+    "setup:runtime": "node scripts/import-omniroute.mjs",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "test:openai-live": "tsx scripts/test-openai-live.ts",
     "test:supabase-live": "tsx scripts/test-supabase-live.ts",

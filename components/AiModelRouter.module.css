@@ -1,0 +1,154 @@
+.panel {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(0, 163, 224, .10), rgba(0, 0, 0, .22));
+}
+
+.headerRow {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.headerRow h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.headerRow p {
+  margin: 4px 0 0;
+  color: rgba(255, 255, 255, .62);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.secondary,
+.preset,
+.orderItem button,
+.modelCard {
+  border: 1px solid rgba(255, 255, 255, .14);
+  background: rgba(0, 0, 0, .22);
+  color: #fff;
+  border-radius: 11px;
+  cursor: pointer;
+}
+
+.secondary {
+  padding: 10px 14px;
+  font-weight: 700;
+}
+
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.preset {
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.section {
+  display: grid;
+  gap: 10px;
+}
+
+.section strong {
+  font-size: 12px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #00a3e0;
+}
+
+.orderList {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.orderItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, .10);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, .18);
+}
+
+.orderItem span,
+.orderItem small {
+  display: block;
+}
+
+.orderItem span {
+  font-size: 14px;
+}
+
+.orderItem small {
+  color: rgba(255, 255, 255, .52);
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.actions button {
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.actions button:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+.helper {
+  color: rgba(255, 255, 255, .58);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.grid {
+  display: grid;
+  gap: 8px;
+}
+
+.modelCard {
+  padding: 12px 14px;
+  text-align: left;
+}
+
+.modelCard span,
+.modelCard small {
+  display: block;
+}
+
+.modelCard span {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.modelCard small {
+  margin-top: 4px;
+  color: rgba(255, 255, 255, .58);
+  line-height: 1.4;
+}
+
+@media (min-width: 720px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

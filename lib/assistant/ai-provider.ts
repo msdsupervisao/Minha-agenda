@@ -23,8 +23,15 @@ export class OpenAIIntentProvider implements IntentProvider {
   readonly name = 'openai' as const;
   private responses: ResponsesClient;
 
-  constructor(private options: { apiKey?: string; model?: string; timeoutMs?: number; responses?: ResponsesClient }) {
-    const client = options.responses ? null : new OpenAI({ apiKey: options.apiKey, timeout: options.timeoutMs ?? 8000, maxRetries: 1 });
+  constructor(
+    private options: { apiKey?: string; model?: string; timeoutMs?: number; baseURL?: string | null; responses?: ResponsesClient },
+  ) {
+    const client = options.responses ? null : new OpenAI({
+      apiKey: options.apiKey,
+      baseURL: options.baseURL?.trim() || undefined,
+      timeout: options.timeoutMs ?? 8000,
+      maxRetries: 1,
+    });
     this.responses = options.responses || (client!.responses as unknown as ResponsesClient);
   }
 

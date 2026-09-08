@@ -1,7 +1,12 @@
 import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
 import AppShell from '@/components/AppShell';
+import AiModelRouter from '@/components/AiModelRouter';
 import PushToggle from '@/components/PushToggle';
 import screens from '@/components/screens/Screens.module.css';
+import { RECOMMENDED_GATEWAY_MODELS } from '@/lib/agent/gateway-models';
+import { getAiRuntimeConfig } from '@/lib/assistant/ai-config';
+import { AI_ROUTE_COOKIE_NAME, parseAiRouteChainCookieValue } from '@/lib/assistant/ai-route';
 import { getSupabasePublicConfig } from '@/lib/supabase/config';
 import { getScreenContext } from '@/lib/data/screen-queries';
 import { resolveTimezone } from '@/lib/data/server-timezone';
@@ -15,7 +20,11 @@ export default async function AjustesPage() {
   if (!ctx) redirect('/login');
 
   const timezone = await resolveTimezone();
+  const routeChain = parseAiRouteChainCookieValue((await cookies()).get(AI_ROUTE_COOKIE_NAME)?.value || null);
+  const aiConfig = getAiRuntimeConfig(undefined, routeChain);
+  const cookieOverrideAllowed = process.env.NODE_ENV !== 'production' || process.env.AI_ROUTE_COOKIE_OVERRIDE?.trim().toLowerCase() === 'true';
   const aiMode = (process.env.AI_PROVIDER === 'local' || !process.env.OPENAI_API_KEY) ? 'Local (regras)' : 'OpenAI';
+  const gatewayFallbacks = aiConfig.fallbackModels.length ? aiConfig.fallbackModels.join(' · ') : (aiConfig.fallbackModel || '—');
 
   let usage: AiUsageSummary | null = null;
   try { usage = await getAiUsageSummary(ctx); } catch { usage = null; }
@@ -24,6 +33,9 @@ export default async function AjustesPage() {
     { label: 'Conta', value: ctx.email || '—' },
     { label: 'Fuso horário', value: timezone },
     { label: 'Interpretação de IA', value: aiMode },
+    { label: 'Rota principal', value: aiConfig.activeProvider === 'omniroute' ? aiConfig.model : aiConfig.activeProvider },
+    { label: 'Fallbacks', value: aiConfig.activeProvider === 'omniroute' ? gatewayFallbacks : '—' },
+    { label: 'Override por cookie', value: cookieOverrideAllowed ? 'Permitido fora de produção' : 'Bloqueado em produção' },
     { label: 'Dados', value: 'Supabase (RLS por usuário)' },
     { label: 'WhatsApp', value: 'Desativado (mock)' },
   ];
@@ -91,6 +103,32 @@ export default async function AjustesPage() {
             </li>
           </ul>
         )}
+
+        <AiModelRouter
+          activeProvider={aiConfig.activeProvider}
+          allowOverride={cookieOverrideAllowed}
+          initialChain={aiConfig.activeProvider === 'omniroute'
+            ? [aiConfig.model, ...aiConfig.fallbackModels]
+            : ['gemini/gemini-3.1-flash-lite', 'groq/openai/gpt-oss-20b']}
+        />
+
+        <p className={screens.sectionTitle}>Modelos do gateway</p>
+        <ul className={screens.list}>
+          {RECOMMENDED_GATEWAY_MODELS.map((model) => (
+            <li key={model.slug} className={screens.item}>
+              <div className={screens.itemRow}>
+                <div className={screens.itemMain}>
+                  <span className={screens.itemTitle}>{model.label}</span>
+                  <div className={screens.itemMeta}>
+                    {model.slug} · {model.description}
+                    <br />
+                    Melhor para: {model.bestFor}
+                  </div>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
 
         <form action="/auth/logout" method="post" style={{ margin: 0 }}>
           <button type="submit" className={`${screens.btn} ${screens.btnGhost}`} style={{ width: '100%' }}>Sair da conta</button>

@@ -45,7 +45,7 @@ export class ToolRegistry {
 
     const parsed = tool.inputSchema.safeParse(call.arguments);
     if (!parsed.success) {
-      return failure(call, 'read', 'invalid_arguments', {
+      return failure(call, typeof tool.risk === 'string' ? tool.risk : 'critical', 'invalid_arguments', {
         message: 'Os argumentos da ferramenta são inválidos.',
         issues: parsed.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })),
       });

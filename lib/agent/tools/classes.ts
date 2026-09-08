@@ -19,6 +19,25 @@ export function createSupabaseClassCatalog(client: SupabaseClient): ClassCatalog
 export function createClassTools(catalog: ClassCatalog): AgentTool<JsonObject>[] {
   return [
     {
+      name: 'list_classes',
+      description: 'Lista as turmas reais cadastradas pelo usuário, sem filtro de nome. Use para uma visão geral das turmas ou grupos. A fonte retorna no máximo 300 registros.',
+      risk: 'read',
+      inputSchema: z.object({}).strict(),
+      async execute(_input, context) {
+        const classes = await catalog.list(context);
+        return {
+          count: classes.length,
+          limit: 300,
+          possiblyTruncated: classes.length >= 300,
+          classes: classes.map((schoolClass) => ({
+            id: schoolClass.id, name: schoolClass.name, course: schoolClass.course,
+            schedule: schoolClass.schedule, teacher: schoolClass.teacher,
+            whatsappGroup: schoolClass.whatsappGroup,
+          })),
+        };
+      },
+    },
+    {
       name: 'find_classes',
       description: 'Pesquisa turmas reais cadastradas por nome, curso ou grupo. Use antes de assumir qual turma o usuário mencionou, inclusive quando a transcrição de voz parecer imprecisa.',
       risk: 'read',

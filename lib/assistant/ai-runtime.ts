@@ -56,5 +56,5 @@ export async function interpretOnServer(
 
 function createProvider(config: AiRuntimeConfig): IntentProvider {
   if (config.activeProvider === 'local') return new LocalIntentProvider();
-  return new OpenAIIntentProvider({ apiKey: config.apiKey || undefined, model: config.model, timeoutMs: config.timeoutMs });
+  return new OpenAIIntentProvider({ apiKey: config.apiKey || undefined, baseURL: config.baseUrl, model: config.model, timeoutMs: config.timeoutMs });
 }
