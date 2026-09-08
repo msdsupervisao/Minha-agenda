@@ -127,8 +127,15 @@ export class AgentOrchestrator {
         if (result.verified) this.options.onProgress?.({ phase: 'verified', step, toolName: call.name });
         if (hasUncertainEffect([result])) break;
       }
+      const previousResults = [...toolResults];
       toolResults.push(...currentResults);
       if (hasUncertainEffect(currentResults)) return fail(response.provider, model, step, toolResults, usage, 'unverified_tool_result', 'Não consegui verificar a ação. Confira seus registros antes de tentar executá-la novamente.');
+      const repeatedInvalidArguments = currentResults.some((result) => result.errorCode === 'invalid_arguments'
+        && previousResults.some((previous) => previous.toolName === result.toolName
+          && previous.errorCode === 'invalid_arguments' && isDeepStrictEqual(previous.arguments, result.arguments)));
+      if (repeatedInvalidArguments) {
+        return fail(response.provider, model, step, toolResults, usage, 'repeated_invalid_arguments', 'Não consegui entender os dados necessários para concluir. Reformule o pedido com a data e o horário.');
+      }
 
       const pendingApprovals = currentResults.filter((result) => result.status === 'approval_required');
       if (pendingApprovals.length > 0) {

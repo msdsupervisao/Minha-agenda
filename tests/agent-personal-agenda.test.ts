@@ -50,3 +50,21 @@ test('lembrete calcula prazo no servidor, verifica persistência e não afirma e
   assert.equal(invalid.errorCode, 'invalid_arguments');
   assert.equal(store.writes, 1);
 });
+
+test('lembrete aceita ISO comum do Gemini e completa o campo nulo omitido', async () => {
+  const store = new MemoryStore();
+  const registry = new ToolRegistry(createPersonalAgendaTools(store));
+  const result = await registry.execute({
+    callId: 'reminder-gemini',
+    name: 'create_reminder',
+    arguments: { title: 'Pagar a conta', scheduleKind: 'local_datetime', localDueAt: '2026-09-07T09:00:00-04:00' },
+  }, context);
+  assert.equal(result.verified, true);
+  assert.equal(store.reminder?.dueAt, '2026-09-07T13:00:00.000Z');
+  assert.deepEqual(result.arguments, {
+    title: 'Pagar a conta',
+    scheduleKind: 'local_datetime',
+    localDueAt: '2026-09-07T09:00',
+    delayMinutes: null,
+  });
+});

@@ -43,9 +43,12 @@ export class ToolRegistry {
     const tool = this.tools.get(call.name);
     if (!tool) return failure(call, 'read', 'unknown_tool', 'Ferramenta não registrada.');
 
-    const parsed = tool.inputSchema.safeParse(call.arguments);
+    const normalizedCall = tool.normalizeArguments
+      ? { ...call, arguments: tool.normalizeArguments(call.arguments) }
+      : call;
+    const parsed = tool.inputSchema.safeParse(normalizedCall.arguments);
     if (!parsed.success) {
-      return failure(call, typeof tool.risk === 'string' ? tool.risk : 'critical', 'invalid_arguments', {
+      return failure(normalizedCall, typeof tool.risk === 'string' ? tool.risk : 'critical', 'invalid_arguments', {
         message: 'Os argumentos da ferramenta são inválidos.',
         issues: parsed.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })),
       });
@@ -54,7 +57,7 @@ export class ToolRegistry {
     const input = parsed.data;
     const risk = resolveRisk(tool, input, context);
     const decision = this.policy.assess({
-      call,
+      call: normalizedCall,
       risk,
       approvedCallIds,
       context,
@@ -62,13 +65,13 @@ export class ToolRegistry {
     });
 
     if (decision.kind === 'denied') {
-      return { callId: call.callId, toolName: call.name, arguments: call.arguments, status: 'denied', output: { message: decision.reason }, verified: false, risk, errorCode: 'policy_denied' };
+      return { callId: normalizedCall.callId, toolName: normalizedCall.name, arguments: normalizedCall.arguments, status: 'denied', output: { message: decision.reason }, verified: false, risk, errorCode: 'policy_denied' };
     }
     if (decision.kind === 'approval_required') {
       return {
-        callId: call.callId,
-        toolName: call.name,
-        arguments: call.arguments,
+        callId: normalizedCall.callId,
+        toolName: normalizedCall.name,
+        arguments: normalizedCall.arguments,
         status: 'approval_required',
         output: { message: decision.message },
         verified: false,
@@ -82,9 +85,9 @@ export class ToolRegistry {
       const verification = await this.verifier.verify(tool, output, input, context);
       if (!verification.verified) {
         return {
-          callId: call.callId,
-          toolName: call.name,
-          arguments: call.arguments,
+          callId: normalizedCall.callId,
+          toolName: normalizedCall.name,
+          arguments: normalizedCall.arguments,
           status: 'error',
           output,
           verified: false,
@@ -94,9 +97,9 @@ export class ToolRegistry {
         };
       }
       return {
-        callId: call.callId,
-        toolName: call.name,
-        arguments: call.arguments,
+        callId: normalizedCall.callId,
+        toolName: normalizedCall.name,
+        arguments: normalizedCall.arguments,
         status: 'success',
         output,
         verified: true,
@@ -105,9 +108,9 @@ export class ToolRegistry {
       };
     } catch (error) {
       if (error instanceof AgentToolExecutionError) {
-        return failure(call, risk, error.errorCode, error.output);
+        return failure(normalizedCall, risk, error.errorCode, error.output);
       }
-      return failure(call, risk, 'tool_execution_failed', 'A ferramenta falhou durante a execução.');
+      return failure(normalizedCall, risk, 'tool_execution_failed', 'A ferramenta falhou durante a execução.');
     }
   }
 }

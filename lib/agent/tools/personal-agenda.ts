@@ -64,6 +64,7 @@ export function createPersonalAgendaTools(store: PersonalAgendaStore): AgentTool
       description: 'Registra um lembrete pessoal na agenda. Para daqui a N minutos use delay_minutes com localDueAt=null; para data e hora use local_datetime e delayMinutes=null. A releitura comprova o registro, mas não comprova entrega de notificação nem agendamento no Android. Não use para avisos de turma ou envio de mensagens.',
       risk: 'low',
       inputSchema: reminderSchema,
+      normalizeArguments: normalizeReminderArguments,
       async execute(input, context) {
         const dueAt = reminderDueAt(input, context);
         if (Date.parse(dueAt) <= context.now.getTime()) throw new Error('reminder_time_must_be_future');
@@ -77,6 +78,24 @@ export function createPersonalAgendaTools(store: PersonalAgendaStore): AgentTool
       },
     },
   ];
+}
+
+export function normalizeReminderArguments(input: JsonObject): JsonObject {
+  const normalized = { ...input };
+  if (!normalized.scheduleKind) {
+    if (typeof normalized.localDueAt === 'string') normalized.scheduleKind = 'local_datetime';
+    else if (typeof normalized.delayMinutes === 'number') normalized.scheduleKind = 'delay_minutes';
+  }
+  if (normalized.scheduleKind === 'local_datetime') {
+    normalized.delayMinutes = null;
+    if (typeof normalized.localDueAt === 'string') {
+      const commonIso = normalized.localDueAt.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?$/);
+      if (commonIso) normalized.localDueAt = commonIso[1];
+    }
+  } else if (normalized.scheduleKind === 'delay_minutes') {
+    normalized.localDueAt = null;
+  }
+  return normalized;
 }
 
 export function agendaRange(fromDate: string, toDate: string, timezone: string) {
