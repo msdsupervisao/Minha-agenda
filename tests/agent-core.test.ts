@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { z } from 'zod';
-import { AgentOrchestrator, buildAgentInstructions, hasBlockingToolFailure } from '../lib/agent/orchestrator';
+import { AgentOrchestrator, buildAgentInstructions, hasBlockingToolFailure, humanizeAgentReply } from '../lib/agent/orchestrator';
 import { ToolRegistry } from '../lib/agent/tool-registry';
 import type {
   AgentExecutionContext,
@@ -122,6 +122,17 @@ test('orquestrador executa ferramenta, devolve resultado ao modelo e conclui ver
   assert.equal(provider.requests[0].messages.at(-1)?.content, 'Abre aquela mensagem da turma de tecnologia.');
   assert.equal(provider.requests[1].toolResults?.[0].status, 'success');
   assert.deepEqual(provider.requests[1].continuation, { providerState: 1 });
+});
+
+test('resposta ao usuário remove UUID interno sem apagar números úteis', () => {
+  assert.equal(
+    humanizeAgentReply('Encontrei a turma "Kids Tecnologia" (ID: e423e0cc-9446-4639-98ae-007d2a8fd282).'),
+    'Encontrei a turma "Kids Tecnologia".'
+  );
+  assert.equal(
+    humanizeAgentReply('A aula é em 09/09/2026 às 14:30 e custa R$ 30,00.'),
+    'A aula é em 09/09/2026 às 14:30 e custa R$ 30,00.'
+  );
 });
 
 test('orquestrador interrompe ação externa para confirmação', async () => {
