@@ -118,16 +118,33 @@ export class AgentOrchestrator {
       }
 
       const currentResults: AgentToolResult[] = [];
+      let reusedVerifiedEffects = 0;
       for (const call of response.toolCalls) {
         this.options.onProgress?.({ phase: 'executing', step, toolName: call.name });
+        const normalizedCall = this.tools.normalizeCall(call);
         const previousEffect = [...toolResults, ...currentResults].find((result) => result.toolName === call.name && result.risk !== 'read'
-          && result.status === 'success' && result.verified && isDeepStrictEqual(result.arguments, call.arguments));
-        const result = previousEffect ? { ...previousEffect, callId: call.callId } : await this.tools.execute(call, input.context, approvedCallIds);
+          && result.status === 'success' && result.verified && isDeepStrictEqual(result.arguments, normalizedCall.arguments));
+        if (previousEffect) reusedVerifiedEffects += 1;
+        const result = previousEffect ? { ...previousEffect, callId: call.callId } : await this.tools.execute(normalizedCall, input.context, approvedCallIds);
         currentResults.push(result);
         if (result.verified) this.options.onProgress?.({ phase: 'verified', step, toolName: call.name });
         if (hasUncertainEffect([result])) break;
       }
       const previousResults = [...toolResults];
+      if (currentResults.length > 0 && reusedVerifiedEffects === currentResults.length) {
+        const verifiedEffect = currentResults[currentResults.length - 1];
+        return {
+          kind: 'completed',
+          reply: verifiedEffectReply(verifiedEffect, input.context.now, input.context.timezone),
+          verified: true,
+          provider: response.provider,
+          model,
+          steps: step,
+          toolResults: previousResults,
+          usage,
+          executions,
+        };
+      }
       toolResults.push(...currentResults);
       if (hasUncertainEffect(currentResults)) return fail(response.provider, model, step, toolResults, usage, 'unverified_tool_result', 'Não consegui verificar a ação. Confira seus registros antes de tentar executá-la novamente.');
       const repeatedInvalidArguments = currentResults.some((result) => result.errorCode === 'invalid_arguments'
@@ -170,6 +187,38 @@ export class AgentOrchestrator {
 function hasUncertainEffect(results: AgentToolResult[]) {
   return results.some((result) => result.risk !== 'read' && result.status === 'error'
     && ['tool_execution_failed', 'verification_failed'].includes(result.errorCode || ''));
+}
+
+function verifiedEffectReply(result: AgentToolResult, now: Date, timezone: string) {
+  const output = result.output && typeof result.output === 'object' && !Array.isArray(result.output)
+    ? result.output as Record<string, unknown>
+    : {};
+  if (result.toolName === 'create_reminder') {
+    const title = typeof output.title === 'string' ? output.title.trim() : 'seu lembrete';
+    const dueAt = typeof output.dueAt === 'string' ? friendlyMoment(output.dueAt, now, timezone) : null;
+    return dueAt ? `Pronto, salvei o lembrete “${title}” para ${dueAt}.` : `Pronto, salvei o lembrete “${title}”.`;
+  }
+  if (result.toolName === 'create_note') return 'Pronto, anotei isso.';
+  if (result.toolName === 'prepare_notice_schedule') return 'Preparei o aviso. Confirme o agendamento no celular.';
+  return 'Pronto, concluí e verifiquei a ação.';
+}
+
+function friendlyMoment(value: string, now: Date, timezone: string) {
+  const due = new Date(value);
+  if (!Number.isFinite(due.getTime())) return null;
+  const dateKey = (date: Date) => new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(date);
+  const today = dateKey(now);
+  const tomorrow = dateKey(new Date(now.getTime() + 86_400_000));
+  const dueDay = dateKey(due);
+  const time = new Intl.DateTimeFormat('pt-BR', {
+    timeZone: timezone, hour: '2-digit', minute: '2-digit', hour12: false,
+  }).format(due).replace(/^0/, '').replace(':00', 'h').replace(':', 'h');
+  if (dueDay === today) return `hoje às ${time}`;
+  if (dueDay === tomorrow) return `amanhã às ${time}`;
+  const date = new Intl.DateTimeFormat('pt-BR', { timeZone: timezone, dateStyle: 'short' }).format(due);
+  return `${date} às ${time}`;
 }
 
 export function hasBlockingToolFailure(results: AgentToolResult[]) {

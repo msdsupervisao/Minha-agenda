@@ -135,6 +135,37 @@ test('resposta ao usuário remove UUID interno sem apagar números úteis', () =
   );
 });
 
+test('re-chamada de efeito já verificado conclui sem duplicar a gravação', async () => {
+  let writes = 0;
+  const repeatedArguments = {
+    title: 'Pagar a conta',
+    scheduleKind: 'local_datetime',
+    localDueAt: '2026-08-28T09:00',
+    delayMinutes: null,
+  };
+  const provider = new ScriptedProvider([
+    response({ toolCalls: [{ callId: 'first', name: 'create_reminder', arguments: repeatedArguments }], continuation: { step: 1 } }),
+    response({ toolCalls: [{ callId: 'repeated', name: 'create_reminder', arguments: repeatedArguments }], continuation: { step: 2 } }),
+  ]);
+  const registry = new ToolRegistry([tool({
+    name: 'create_reminder',
+    risk: 'low',
+    inputSchema: z.object({
+      title: z.string(), scheduleKind: z.string(), localDueAt: z.string(), delayMinutes: z.null(),
+    }).strict(),
+    async execute() { writes += 1; return { title: 'Pagar a conta', dueAt: '2026-08-27T13:00:00.000Z' }; },
+    async verify(output) { return { verified: true, evidence: output }; },
+  })]);
+
+  const result = await new AgentOrchestrator(provider, registry).run({ text: 'Me lembre de pagar a conta amanhã às 9.', context });
+
+  assert.equal(result.kind, 'completed');
+  assert.equal(writes, 1);
+  assert.equal(result.steps, 2);
+  assert.match(result.reply, /salvei o lembrete.*amanhã às 9h/i);
+  assert.equal(result.toolResults.length, 1);
+});
+
 test('orquestrador interrompe ação externa para confirmação', async () => {
   let executions = 0;
   const provider = new ScriptedProvider([response({

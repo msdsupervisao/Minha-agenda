@@ -35,6 +35,13 @@ export class ToolRegistry {
     }));
   }
 
+  normalizeCall(call: AgentToolCall): AgentToolCall {
+    const tool = this.tools.get(call.name);
+    return tool?.normalizeArguments
+      ? { ...call, arguments: tool.normalizeArguments(call.arguments) }
+      : call;
+  }
+
   async execute(
     call: AgentToolCall,
     context: AgentExecutionContext,
@@ -43,9 +50,7 @@ export class ToolRegistry {
     const tool = this.tools.get(call.name);
     if (!tool) return failure(call, 'read', 'unknown_tool', 'Ferramenta não registrada.');
 
-    const normalizedCall = tool.normalizeArguments
-      ? { ...call, arguments: tool.normalizeArguments(call.arguments) }
-      : call;
+    const normalizedCall = this.normalizeCall(call);
     const parsed = tool.inputSchema.safeParse(normalizedCall.arguments);
     if (!parsed.success) {
       return failure(normalizedCall, typeof tool.risk === 'string' ? tool.risk : 'critical', 'invalid_arguments', {
