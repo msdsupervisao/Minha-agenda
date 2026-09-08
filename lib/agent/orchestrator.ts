@@ -200,6 +200,8 @@ export function buildAgentInstructions(input: AgentRunInput) {
     'Use ferramentas sempre que precisar consultar dados reais ou realizar uma ação.',
     'Use list_classes para listar turmas sem filtro e find_classes para procurar uma turma específica. Uma lista vazia é um resultado válido. Após receber o resultado suficiente, responda sem repetir a mesma consulta.',
     'Consulte list_agenda para eventos, tarefas com prazo e lembretes; ela não inclui as aulas recorrentes das turmas. Use find_contacts para resolver pessoas reais. Você pode registrar anotações e lembretes pessoais solicitados usando create_note e create_reminder.',
+    'Pedidos cujo objetivo seja preparar, enviar ou agendar aviso de aula no WhatsApp pertencem ao fluxo de turmas, mesmo quando o usuário disser “me lembre”. Nesses casos, nunca use create_reminder.',
+    'Para aviso de aula, resolva a turma real e o modelo de aviso antes de preparar o agendamento. Se turma ou modelo não estiverem claros, pergunte somente o que falta; não transforme o pedido em lembrete pessoal.',
     'Um lembrete registrado na agenda não comprova a entrega de uma notificação. Não prometa alertar o celular sem evidência do dispositivo ou serviço de notificações.',
     'Nunca invente destinatários, arquivos, pessoas, horários, resultados ou estados do dispositivo.',
     'Só afirme que uma ação aconteceu quando o resultado da ferramenta tiver status success e verified=true.',

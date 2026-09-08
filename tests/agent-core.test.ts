@@ -279,6 +279,13 @@ test('instruções centrais exigem intenção, ferramentas e verificação', () 
   assert.doesNotMatch(prompt, /comando exato/);
 });
 
+test('instruções tratam lembrete de aviso de aula como fluxo de WhatsApp', () => {
+  const instructions = buildAgentInstructions({ text: 'Me lembre de mandar aviso de aula.', context });
+  assert.match(instructions, /nunca use create_reminder/i);
+  assert.match(instructions, /fluxo de turmas/i);
+  assert.match(instructions, /turma ou modelo não estiverem claros/i);
+});
+
 test('uma leitura bem-sucedida não encobre falha em outra ferramenta ou outra consulta', () => {
   const failure: AgentToolResult = { callId: 'a', toolName: 'find_classes', arguments: { query: 'Kids' }, status: 'error', output: null, verified: false, risk: 'read', errorCode: 'tool_execution_failed' };
   const success: AgentToolResult = { ...failure, callId: 'b', status: 'success', verified: true, errorCode: undefined };

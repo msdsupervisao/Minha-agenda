@@ -61,7 +61,7 @@ export function createPersonalAgendaTools(store: PersonalAgendaStore): AgentTool
     },
     {
       name: 'create_reminder',
-      description: 'Registra um lembrete pessoal na agenda. Para daqui a N minutos use delay_minutes com localDueAt=null; para data e hora use local_datetime e delayMinutes=null. A releitura comprova o registro, mas não comprova entrega de notificação nem agendamento no Android. Não use para avisos de turma ou envio de mensagens.',
+      description: 'Registra um lembrete pessoal comum na agenda. Nunca use quando o objetivo for preparar, enviar ou agendar aviso de aula/WhatsApp, mesmo que o usuário diga “me lembre”; esse pedido pertence ao fluxo de turmas. Para daqui a N minutos use delay_minutes com localDueAt=null; para data e hora use local_datetime e delayMinutes=null. A releitura comprova o registro, mas não comprova entrega de notificação nem agendamento no Android.',
       risk: 'low',
       inputSchema: reminderSchema,
       normalizeArguments: normalizeReminderArguments,

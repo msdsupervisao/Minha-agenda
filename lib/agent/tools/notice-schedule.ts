@@ -72,7 +72,7 @@ export function createNoticeScheduleTools(
 ): AgentTool<JsonObject>[] {
   return [{
     name: 'prepare_notice_schedule',
-    description: 'Depois da confirmação, cria um handoff para o celular com aviso de uma turma real. Para “daqui a N minutos/horas”, use scheduleKind=delay_minutes; para data e hora de calendário, use scheduleKind=local_datetime. Isso ainda NÃO significa que o celular agendou: status awaiting_device exige abrir o app e aguardar o ACK.',
+    description: 'Depois da confirmação, cria um handoff para o celular com aviso de uma turma real. Use este fluxo quando o objetivo for um aviso de aula no WhatsApp, inclusive em pedidos escritos como “me lembre de mandar o aviso”. Para “daqui a N minutos/horas”, use scheduleKind=delay_minutes; para data e hora de calendário, use scheduleKind=local_datetime. Isso ainda NÃO significa que o celular agendou: status awaiting_device exige abrir o app e aguardar o ACK.',
     risk: 'external',
     inputSchema: z.object({
       classId: z.string().uuid(),
@@ -91,6 +91,7 @@ export function createNoticeScheduleTools(
       const validDelay = value.scheduleKind === 'delay_minutes' && value.localDueAt === null && value.delayMinutes !== null;
       if (!validLocal && !validDelay) issue.addIssue({ code: 'custom', message: 'Combinação de horário inválida.' });
     }),
+    normalizeArguments: normalizeNoticeScheduleArguments,
     approvalMessage(input, context) {
       const body = String(input.body);
       const preview = body.length > 220 ? `${body.slice(0, 217)}…` : body;
@@ -156,6 +157,24 @@ export function createNoticeScheduleTools(
       } as JsonObject;
     },
   }];
+}
+
+export function normalizeNoticeScheduleArguments(input: JsonObject): JsonObject {
+  const normalized = { ...input };
+  if (!normalized.scheduleKind) {
+    if (typeof normalized.localDueAt === 'string') normalized.scheduleKind = 'local_datetime';
+    else if (typeof normalized.delayMinutes === 'number') normalized.scheduleKind = 'delay_minutes';
+  }
+  if (normalized.scheduleKind === 'local_datetime') {
+    normalized.delayMinutes = null;
+    if (typeof normalized.localDueAt === 'string') {
+      const commonIso = normalized.localDueAt.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?$/);
+      if (commonIso) normalized.localDueAt = commonIso[1];
+    }
+  } else if (normalized.scheduleKind === 'delay_minutes') {
+    normalized.localDueAt = null;
+  }
+  return normalized;
 }
 
 function templateBody(schoolClass: Awaited<ReturnType<ClassCatalog['list']>>[number], modelNumber: number) {
