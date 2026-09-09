@@ -30,7 +30,8 @@ self.addEventListener('push', (event) => {
     body: payload.body,
     icon: '/icon-192.png',
     badge: '/icon-192.png',
-    tag: payload.tag || 'lembrete',
+    // An absent task ID must not collapse unrelated notifications into one.
+    tag: payload.tag || '',
     data: { url: payload.url || '/agenda' },
     vibrate: [80, 40, 80],
   }));

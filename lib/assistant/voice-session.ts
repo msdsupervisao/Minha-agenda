@@ -1,4 +1,20 @@
 export type RecognitionEvent = { results: ArrayLike<ArrayLike<{ transcript: string }>> };
+
+// Android may return progressively longer copies of the same phrase as segments.
+export function mergeVoiceSegments(segments: readonly string[]): string {
+  return segments.reduce((text, segment) => {
+    const next = segment.trim();
+    if (!text) return next;
+    const left = text.trim().split(/\s+/);
+    const right = next.split(/\s+/);
+    for (let overlap = Math.min(left.length, right.length); overlap >= 2; overlap--) {
+      if (left.slice(-overlap).join(' ').toLocaleLowerCase('pt-BR') === right.slice(0, overlap).join(' ').toLocaleLowerCase('pt-BR')) {
+        return [...left, ...right.slice(overlap)].join(' ');
+      }
+    }
+    return `${text} ${next}`.trim();
+  }, '');
+}
 export type Recognition = {
   lang: string; interimResults: boolean; continuous: boolean;
   start(): void; stop(): void; abort(): void;
@@ -50,7 +66,7 @@ export function startVoiceSession(recognition: Recognition, callbacks: {
   recognition.interimResults = true;
   recognition.onresult = (event) => {
     if (done) return;
-    text = [previous, Array.from(event.results, (result) => result[0].transcript).join(' ')].filter(Boolean).join(' ');
+    text = mergeVoiceSegments([previous, ...Array.from(event.results, (result) => result[0].transcript)]);
     callbacks.transcript(text);
     if (!stopping) resetSilence();
   };

@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { startVoiceSession, type Recognition } from '../lib/assistant/voice-session';
+import { mergeVoiceSegments, startVoiceSession, type Recognition } from '../lib/assistant/voice-session';
+
+test('Chrome Android: versões crescentes da frase não se acumulam', () => {
+  assert.equal(mergeVoiceSegments(['a nossa', 'a nossa', 'a nossa temperatura', 'a nossa temperatura atual', 'a nossa temperatura atual']), 'a nossa temperatura atual');
+  assert.equal(mergeVoiceSegments(['não', 'não quero isso']), 'não não quero isso');
+});
 
 function fixture() {
   const events: string[] = [];

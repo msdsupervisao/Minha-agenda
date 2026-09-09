@@ -19,6 +19,7 @@ const TurnSchema = z.union([
   z.object({
     text: z.string().trim().min(1).max(4000),
     source: z.enum(['voice', 'text']),
+    weatherLocation: z.object({ latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180) }).strict().optional(),
   }).strict(),
   z.object({
     approvalId: z.string().uuid(),
@@ -94,7 +95,7 @@ async function handleTurn(request: Request, onProgress?: (event: AgentProgress) 
     }
 
     const timezone = await resolveTimezone();
-    const result = await runAgentPilot(client, user.id, parsed.data.text, parsed.data.source, timezone, { onProgress, routeChain });
+    const result = await runAgentPilot(client, user.id, parsed.data.text, parsed.data.source, timezone, { onProgress, routeChain, weatherLocation: parsed.data.weatherLocation });
     await persistAgentTurn(client, user.id, { userText: parsed.data.text, result });
     const store = result.kind === 'approval_required' && serviceConfigured()
       ? new SupabasePendingApprovalStore(createServiceClient())

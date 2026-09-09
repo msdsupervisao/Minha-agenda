@@ -12,6 +12,8 @@ import { OpenAIResponsesAgentProvider } from './providers/openai-responses';
 import { ToolRegistry } from './tool-registry';
 import { createClassTools, createSupabaseClassCatalog, type ClassCatalog } from './tools/classes';
 import { createPersonalAgendaTools } from './tools/personal-agenda';
+import { createCourseKnowledgeTools } from './tools/course-knowledge';
+import { createWeatherTools } from './tools/weather';
 import {
   createNoticeScheduleTools,
   createSupabaseScheduleHandoffStore,
@@ -42,6 +44,7 @@ export async function runAgentPilot(
       continuation: unknown;
     };
     now?: Date;
+    weatherLocation?: { latitude: number; longitude: number };
     onProgress?: (event: AgentProgress) => void;
   } = {},
 ) {
@@ -55,6 +58,8 @@ export async function runAgentPilot(
   const contextState = options.contextState || loadedContext?.state || emptyAgentContextState();
   const scheduleStore = options.scheduleStore || createSupabaseScheduleHandoffStore(client);
   const registry = new ToolRegistry([
+    ...createCourseKnowledgeTools(),
+    ...createWeatherTools(),
     ...createClassTools(catalog),
     ...createNoticeScheduleTools(catalog, scheduleStore),
     ...createPersonalAgendaTools(options.personalStore || createSupabasePersonalAgendaStore(client)),
@@ -69,6 +74,7 @@ export async function runAgentPilot(
       timezone,
       now: options.now || new Date(),
       state: contextState,
+      metadata: options.weatherLocation ? { weatherLocation: options.weatherLocation } : undefined,
     },
   });
 }

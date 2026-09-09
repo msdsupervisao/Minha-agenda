@@ -9,6 +9,7 @@ node_modules
 supabase/.temp
 mobile/dist
 mobile/android/.gradle
+mobile/android/.kotlin/
 mobile/android/local.properties
 *.jks
 *.keystore

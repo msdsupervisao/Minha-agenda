@@ -5,6 +5,7 @@ import { Share } from '@capacitor/share';
 // Regra pura reaproveitada da Agenda (sem duplicar): normalização de telefone BR.
 import { normalizeWhatsAppPhone } from '../../lib/assistant/whatsapp-handoff';
 import { notificationIdForScheduleCode } from '../../lib/schedule/notification-id';
+import { allocateNotificationId, saveDeviceTask, type DeviceTask } from '../../lib/schedule/device-tasks';
 
 // A Agenda continua no site; o app só resgata o código e agenda. Builds de teste
 // devem definir VITE_API_BASE para não falar acidentalmente com produção.
@@ -21,6 +22,38 @@ type Handoff = {
 };
 
 const view = document.getElementById('view') as HTMLElement;
+const taskView = document.createElement('section');
+taskView.className = 'view';
+view.after(taskView);
+const TASKS_KEY = 'minha-agenda:device-tasks:v1';
+async function taskIdForCode(code: string) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code));
+  return `schedule:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+}
+function readTasks(): DeviceTask[] {
+  const value = JSON.parse(localStorage.getItem(TASKS_KEY) || '[]') as DeviceTask[];
+  if (!Array.isArray(value)) throw new Error('Não consegui ler os agendamentos salvos no celular.');
+  return value;
+}
+function storeTask(task: DeviceTask) {
+  localStorage.setItem(TASKS_KEY, JSON.stringify(saveDeviceTask(readTasks(), task)));
+  renderTasks();
+}
+function renderTasks() {
+  taskView.innerHTML = '<h2>Suas mensagens</h2><p class="hint">Escolha a ordem. Abrir o WhatsApp não confirma o envio.</p>';
+  for (const task of readTasks()) {
+    const card = document.createElement('article');
+    card.className = 'card';
+    card.innerHTML = `<p class="meta">${escapeHtml(task.recipientName || 'Mensagem')} · ${formatDue(task.dueAt)}</p><p class="body">${escapeHtml(task.body)}</p>`;
+    const open = document.createElement('button');
+    open.className = 'primary'; open.textContent = 'Abrir no WhatsApp';
+    open.onclick = () => { void openWhatsApp(task.body, task.phone, task.recipientName).catch(() => { render('<p class="error">Não consegui abrir o WhatsApp. A mensagem continua disponível abaixo.</p>'); }); };
+    const complete = document.createElement('button');
+    complete.className = 'primary'; complete.textContent = task.completed ? 'Concluída — reabrir tarefa' : 'Marcar como concluída';
+    complete.onclick = () => storeTask({ ...task, completed: !task.completed });
+    card.append(open, complete); taskView.append(card);
+  }
+}
 
 function render(html: string) { view.innerHTML = html; }
 
@@ -133,11 +166,21 @@ async function scheduleLocal(handoff: Handoff, code: string) {
   }
   // O mesmo código sempre produz o mesmo ID. Reabrir o deep link substitui o
   // agendamento anterior em vez de criar notificações duplicadas.
-  const id = notificationIdForScheduleCode(code);
+  const preferredId = notificationIdForScheduleCode(code);
+  const taskId = await taskIdForCode(code);
+  const existing = readTasks().find((task) => task.id === taskId);
+  const pending = await LocalNotifications.getPending();
+  const id = existing?.notificationId ?? allocateNotificationId(preferredId, [
+    ...readTasks().map((task) => task.notificationId), ...pending.notifications.map((item) => item.id),
+  ]);
+  // Keep the message independently of notifications, including after a tap/dismissal.
+  storeTask({ id: taskId, notificationId: id, body: handoff.body, recipientName: handoff.recipientName,
+    phone: handoff.phone, dueAt: handoff.dueAt, completed: existing?.completed ?? false });
   await ensureNotificationChannel();
   const result = await LocalNotifications.schedule({
     notifications: [{
       id,
+      channelId: 'schedule',
       title: handoff.recipientName ? `Mensagem para ${handoff.recipientName}` : 'Mensagem agendada',
       // Evita mostrar a mensagem inteira na tela bloqueada.
       body: 'Toque para preparar o envio no WhatsApp.',
@@ -148,7 +191,7 @@ async function scheduleLocal(handoff: Handoff, code: string) {
       },
       isExactNotification: true,
       isExactMandatory: false,
-      extra: { body: handoff.body, phone: handoff.phone, recipientName: handoff.recipientName },
+      extra: { taskId, dueAt: handoff.dueAt, body: handoff.body, phone: handoff.phone, recipientName: handoff.recipientName },
     }],
   });
 
@@ -184,6 +227,12 @@ async function acknowledgeWithRetry(code: string, notificationId: number) {
 }
 
 const handledCodes = new Set<string>();
+let scheduling = Promise.resolve();
+function enqueueCode(code: string) {
+  scheduling = scheduling.then(() => handleCode(code)).catch(() => {
+    render('<p class="error">Não consegui guardar o agendamento. Tente novamente pela Agenda.</p>');
+  });
+}
 
 async function handleCode(code: string) {
   if (handledCodes.has(code)) return;
@@ -192,6 +241,10 @@ async function handleCode(code: string) {
   try {
     const handoff = await redeem(code);
     if (handoff.status === 'scheduled_on_device') {
+      const id = handoff.notificationId || notificationIdForScheduleCode(code);
+      const existing = readTasks().find((task) => task.notificationId === id);
+      storeTask({ id: existing?.id || await taskIdForCode(code), notificationId: id,
+        body: handoff.body, recipientName: handoff.recipientName, phone: handoff.phone, dueAt: handoff.dueAt, completed: existing?.completed ?? false });
       render(`
         <div class="card">
           <p class="ok">✅ Agendamento já confirmado no celular.</p>
@@ -211,7 +264,7 @@ async function handleCode(code: string) {
       </div>`);
     document.getElementById('retry')?.addEventListener('click', () => {
       handledCodes.delete(code);
-      void handleCode(code);
+      enqueueCode(code);
     });
   }
 }
@@ -240,11 +293,23 @@ LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
 
 App.addListener('appUrlOpen', (event: URLOpenListenerEvent) => {
   const code = extractCode(event.url);
-  if (code) void handleCode(code);
+  if (code) enqueueCode(code);
 });
 
 // Cold start: o app pode ter sido aberto pelo deep link.
 void App.getLaunchUrl().then((launch) => {
   const code = extractCode(launch?.url);
-  if (code) void handleCode(code);
+  if (code) enqueueCode(code);
 });
+
+// Restore notifications still held by Android when upgrading from the old app.
+void LocalNotifications.getAll().then(({ notifications }) => {
+  for (const item of notifications) {
+    const extra = item.extra as Partial<DeviceTask> & { taskId?: string } | undefined;
+    if (!extra || typeof extra.body !== 'string' || readTasks().some((task) => task.notificationId === item.id)) continue;
+    const dueAt = extra.dueAt || (item.schedule?.at ? new Date(item.schedule.at).toISOString() : new Date().toISOString());
+    storeTask({ id: extra.taskId || `notification:${item.id}`, notificationId: item.id, body: extra.body,
+      recipientName: extra.recipientName || null, phone: extra.phone || null, dueAt, completed: false });
+  }
+  renderTasks();
+}).catch(() => renderTasks());

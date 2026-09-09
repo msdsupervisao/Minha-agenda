@@ -51,6 +51,16 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
   const scheduleWatch = useRef(0);
   const engine = useRef<ConversationClient | null>(null);
   const voiceSession = useRef<ReturnType<typeof startVoiceSession> | null>(null);
+  const weatherLocation = useRef<{ latitude: number; longitude: number } | undefined>(undefined);
+  const [locationNotice, setLocationNotice] = useState('');
+  function enableWeatherLocation() {
+    if (!navigator.geolocation) { setLocationNotice('Informe sua cidade na conversa.'); return; }
+    setLocationNotice('Obtendo localização…');
+    navigator.geolocation.getCurrentPosition(({ coords }) => {
+      weatherLocation.current = { latitude: Number(coords.latitude.toFixed(2)), longitude: Number(coords.longitude.toFixed(2)) };
+      setLocationNotice('Localização disponível para consultas de clima nesta conversa.');
+    }, () => setLocationNotice('Não consegui obter a localização. Informe cidade e estado na conversa.'), { timeout: 10000, maximumAge: 300000 });
+  }
   useEffect(() => () => voiceSession.current?.cancel(), []);
 
   useEffect(() => {
@@ -103,7 +113,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
     await wait(320);
 
     if (agentPilot) {
-      try { await handleAgentResult(await sendAgentTurn({ text: clean, source }, handleProgress)); }
+      try { await handleAgentResult(await sendAgentTurn({ text: clean, source, weatherLocation: weatherLocation.current }, handleProgress)); }
       catch (error) {
         setState('error');
         setReply(error instanceof Error ? error.message : 'Não consegui consultar o agente.');
@@ -350,6 +360,8 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
         <button className={styles.microphone} type="button" onClick={startVoice} aria-label="Falar com a assistente"><MicIcon /></button>
       </div>
       <p className={styles.stateLabel}>{labels[state]}</p>
+      <button type="button" className={styles.secondary} onClick={enableWeatherLocation}>Usar minha localização para clima</button>
+      {locationNotice && <p role="status">{locationNotice}</p>}
       {transcript && <p className={styles.transcript}>“{transcript}”</p>}
       <p className={styles.reply} role="status">{reply}</p>
       {lastRun && <details className={styles.executionDetails}>

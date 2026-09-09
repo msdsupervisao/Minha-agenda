@@ -12,7 +12,7 @@ export type AgentClientResult = {
 };
 
 export async function sendAgentTurn(
-  input: { text: string; source: 'voice' | 'text' } | { approvalId: string; decision: 'approve' | 'cancel' },
+  input: { text: string; source: 'voice' | 'text'; weatherLocation?: { latitude: number; longitude: number } } | { approvalId: string; decision: 'approve' | 'cancel' },
   onProgress?: (event: AgentProgress) => void,
   request: typeof fetch = fetch,
 ) {
