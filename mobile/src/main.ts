@@ -40,8 +40,15 @@ function storeTask(task: DeviceTask) {
   renderTasks();
 }
 function renderTasks() {
-  taskView.innerHTML = '<h2>Suas mensagens</h2><p class="hint">Escolha a ordem. Abrir o WhatsApp não confirma o envio.</p>';
-  for (const task of readTasks()) {
+  const tasks = readTasks();
+  const pending = tasks.filter((task) => !task.completed);
+  const completed = tasks.filter((task) => task.completed);
+  taskView.innerHTML = `<h2>Suas mensagens${pending.length ? ` (${pending.length})` : ''}</h2><p class="hint">${pending.length ? 'Escolha a mensagem que deseja enviar.' : 'Tudo concluído. Nenhuma mensagem pendente.'}</p>`;
+  const history = document.createElement('details');
+  const summary = document.createElement('summary');
+  summary.textContent = `Concluídas (${completed.length})`;
+  history.append(summary);
+  for (const task of [...pending, ...completed]) {
     const card = document.createElement('article');
     card.className = 'card';
     card.innerHTML = `<p class="meta">${escapeHtml(task.recipientName || 'Mensagem')} · ${formatDue(task.dueAt)}</p><p class="body">${escapeHtml(task.body)}</p>`;
@@ -49,10 +56,17 @@ function renderTasks() {
     open.className = 'primary'; open.textContent = 'Abrir no WhatsApp';
     open.onclick = () => { void openWhatsApp(task.body, task.phone, task.recipientName).catch(() => { render('<p class="error">Não consegui abrir o WhatsApp. A mensagem continua disponível abaixo.</p>'); }); };
     const complete = document.createElement('button');
-    complete.className = 'primary'; complete.textContent = task.completed ? 'Concluída — reabrir tarefa' : 'Marcar como concluída';
-    complete.onclick = () => storeTask({ ...task, completed: !task.completed });
-    card.append(open, complete); taskView.append(card);
+    complete.className = 'primary'; complete.textContent = task.completed ? 'Reabrir tarefa' : 'Marcar como concluída';
+    complete.onclick = () => {
+      storeTask({ ...task, completed: !task.completed });
+      render('');
+      // Bring the next pending message into view, without opening WhatsApp automatically.
+      taskView.scrollIntoView({ block: 'start' });
+    };
+    card.append(open, complete);
+    (task.completed ? history : taskView).append(card);
   }
+  if (completed.length) taskView.append(history);
 }
 
 function render(html: string) { view.innerHTML = html; }
