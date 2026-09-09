@@ -10,11 +10,10 @@ import type { ResolvedWeeklyNotice } from '@/lib/notices/weekly';
 import { sendAgentTurn, verifiedScheduleHandoff, type AgentClientResult } from '@/lib/agent/client';
 import type { AgentProgress } from '@/lib/agent/contracts';
 import { selectPortugueseVoice, speechTextForReply, stripMarkdownForSpeech } from '@/lib/assistant/speech';
+import { startVoiceSession, type Recognition } from '@/lib/assistant/voice-session';
 import GyroCore from './GyroCore';
 import styles from './AssistantHub.module.css';
 
-type RecognitionEvent = { results: { [index: number]: { [index: number]: { transcript: string } } } };
-type Recognition = { lang: string; interimResults: boolean; continuous: boolean; start: () => void; onresult: ((event: RecognitionEvent) => void) | null; onerror: ((event: { error: string }) => void) | null };
 type RecognitionConstructor = new () => Recognition;
 
 const labels: Record<AssistantState, string> = {
@@ -51,6 +50,8 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
   const timer = useRef<number | null>(null);
   const scheduleWatch = useRef(0);
   const engine = useRef<ConversationClient | null>(null);
+  const voiceSession = useRef<ReturnType<typeof startVoiceSession> | null>(null);
+  useEffect(() => () => voiceSession.current?.cancel(), []);
 
   useEffect(() => {
     const assistant = createConversationClient(dataProvider);
@@ -77,10 +78,10 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
     synthesis.speak(utterance);
   }
 
-  function finish(text: string) {
+  function finish(text: string, message = false) {
     setReply(text);
     setState('success');
-    speak(text);
+    speak(speechTextForReply(text, { message }));
     if (timer.current) window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => setState('idle'), 3800);
   }
@@ -88,6 +89,8 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
   async function processCommand(command: string, source: 'voice' | 'text') {
     const clean = command.trim();
     if (!clean || state === 'processing' || state === 'action' || agentApprovalId) return;
+    voiceSession.current?.cancel();
+    voiceSession.current = null;
     if (timer.current) window.clearTimeout(timer.current);
     setLastRun(null);
     scheduleWatch.current += 1;
@@ -125,7 +128,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
     if (result.kind === 'confirmation') {
       setState('confirmation');
       setReply(result.reply);
-      speak(speechTextForReply(result.reply));
+      speak(speechTextForReply(result.reply, { approval: true }));
       return;
     }
     if (result.kind === 'error') {
@@ -136,16 +139,18 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
     if (result.kind === 'question') {
       setState('idle');
       setReply(result.reply);
-      speak(result.reply);
+      speak(speechTextForReply(result.reply, { message: Boolean(result.weeklyNotice) }));
       return;
     }
 
     setState('action');
     await wait(180);
-    finish(result.reply);
+    finish(result.reply, Boolean(result.weeklyNotice || result.whatsappHandoff));
   }
 
   function startVoice() {
+    if (state === 'processing' || state === 'action' || agentApprovalId) return;
+    if (voiceSession.current) { voiceSession.current.stop(); return; }
     const supportedWindow = window as Window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
     const Constructor = supportedWindow.SpeechRecognition || supportedWindow.webkitSpeechRecognition;
     if (!Constructor) {
@@ -154,20 +159,29 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
       return;
     }
     const recognition = new Constructor();
-    recognition.lang = 'pt-BR';
-    recognition.interimResults = false;
-    recognition.continuous = false;
-    recognition.onresult = (event) => {
-      const text = event.results[0][0].transcript;
-      void processCommand(text, 'voice');
-    };
-    recognition.onerror = () => {
-      setState('error');
-      setReply('Não consegui acessar o microfone. Verifique a permissão e tente novamente.');
-    };
+    if (timer.current) window.clearTimeout(timer.current);
+    window.speechSynthesis?.cancel();
     setState('listening');
+    setTranscript('');
     setReply('Pode falar.');
-    try { recognition.start(); } catch { setState('error'); setReply('O microfone já está em uso. Tente de novo em instantes.'); }
+    let ended = false;
+    const session = startVoiceSession(recognition, {
+      transcript: setTranscript,
+      stopping: () => { setState('processing'); setReply('Concluindo a escuta…'); },
+      complete: (text) => {
+        ended = true;
+        voiceSession.current = null;
+        if (text) void processCommand(text, 'voice');
+        else { setState('idle'); setReply('Não ouvi um pedido. Toque para tentar novamente.'); }
+      },
+      error: () => {
+        ended = true;
+        voiceSession.current = null;
+        setState('error');
+        setReply('Não consegui acessar o microfone. Verifique a permissão e tente novamente.');
+      },
+    });
+    if (!ended) voiceSession.current = session;
   }
 
   async function confirm() {
@@ -217,7 +231,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
       }
       return;
     }
-    finish(result.reply);
+    finish(result.reply, Boolean(result.weeklyNotice || result.whatsappHandoff));
     if (result.whatsappHandoff) {
       const url = buildWhatsAppHandoffUrl(result.whatsappHandoff);
       window.setTimeout(() => window.location.assign(url), 350);
@@ -230,7 +244,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
       setAgentApprovalId(result.approvalId);
       setState('confirmation');
       setReply(result.reply);
-      speak(speechTextForReply(result.reply));
+      speak(speechTextForReply(result.reply, { approval: true }));
       return;
     }
     if (result.kind === 'cancelled') {
@@ -258,7 +272,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
       setReply(result.reply);
       return;
     }
-    finish(result.reply);
+    finish(result.reply, result.toolResults?.some((tool) => /notice|whatsapp/.test(tool.toolName)));
   }
 
   function handleProgress(event: AgentProgress) {
