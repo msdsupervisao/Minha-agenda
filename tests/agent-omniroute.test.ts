@@ -27,6 +27,50 @@ test('fallback por quota preserva instruções, ferramentas, continuação e res
   assert.deepEqual(attempts, [primary, fallback, fallback]);
 });
 
+test('403 transitório repete o mesmo modelo uma vez antes de concluir', async () => {
+  const calls: string[] = [];
+  const delays: number[] = [];
+  const provider = new OmniRouteAgentProvider({
+    model: primary,
+    fallbackModel: fallback,
+    sleep: async (milliseconds) => { delays.push(milliseconds); },
+    makeProvider: (model) => ({
+      name: model,
+      async generate() {
+        calls.push(model);
+        if (model === primary) throw Object.assign(new Error('quota'), { status: 429 });
+        if (calls.filter((calledModel) => calledModel === fallback).length === 1) {
+          throw Object.assign(new Error('cloudflare_rate_limit'), { status: 403 });
+        }
+        return response(model);
+      },
+    }),
+  });
+
+  const result = await provider.generate(request);
+  assert.deepEqual(calls, [primary, fallback, fallback]);
+  assert.deepEqual(delays, [300]);
+  assert.equal(result.model, fallback);
+  assert.deepEqual(result.execution?.attempts, [
+    { model: primary, status: 'failed', errorCode: 'http_429' },
+    { model: fallback, status: 'failed', errorCode: 'http_403' },
+    { model: fallback, status: 'success' },
+  ]);
+});
+
+test('403 persistente tem retry limitado e 401 continua sem retry', async () => {
+  for (const [status, expectedCalls] of [[403, 2], [401, 1]] as const) {
+    let calls = 0;
+    const provider = new OmniRouteAgentProvider({
+      model: primary,
+      sleep: async () => undefined,
+      makeProvider: (model) => ({ name: model, async generate() { calls++; throw Object.assign(new Error('denied'), { status }); } }),
+    });
+    await assert.rejects(provider.generate(request));
+    assert.equal(calls, expectedCalls);
+  }
+});
+
 test('autenticação, argumentos inválidos e gateway fora do ar não provocam troca de modelo', async () => {
   for (const error of [Object.assign(new Error('auth'), { status: 401 }), Object.assign(new Error('schema'), { status: 400 }), new Error('agent_provider_invalid_tool_arguments'), Object.assign(new Error('offline'), { name: 'APIConnectionError' })]) {
     let calls = 0;
