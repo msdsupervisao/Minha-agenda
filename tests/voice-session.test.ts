@@ -4,7 +4,10 @@ import { mergeVoiceSegments, startVoiceSession, type Recognition } from '../lib/
 
 test('Chrome Android: versões crescentes da frase não se acumulam', () => {
   assert.equal(mergeVoiceSegments(['a nossa', 'a nossa', 'a nossa temperatura', 'a nossa temperatura atual', 'a nossa temperatura atual']), 'a nossa temperatura atual');
-  assert.equal(mergeVoiceSegments(['não', 'não quero isso']), 'não não quero isso');
+  // Palavras iniciais repetidas pelo motor do celular ("me me me diga") são colapsadas.
+  assert.equal(mergeVoiceSegments(['me', 'me', 'me', 'me diga quem é você']), 'me diga quem é você');
+  assert.equal(mergeVoiceSegments(['porque', 'porque']), 'porque');
+  assert.equal(mergeVoiceSegments(['não', 'não quero isso']), 'não quero isso');
 });
 
 function fixture() {
@@ -22,13 +25,13 @@ function fixture() {
   return { events, recognition, session, say };
 }
 
-test('silêncio de 3s reinicia a cada resultado, acumula segmentos e conclui uma vez', (t) => {
+test('silêncio de 1,5s reinicia a cada resultado, acumula segmentos e conclui uma vez', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const f = fixture();
   f.say('me lembre');
-  t.mock.timers.tick(2500);
+  t.mock.timers.tick(1400);
   f.say('me lembre', 'amanhã às nove');
-  t.mock.timers.tick(2999);
+  t.mock.timers.tick(1499);
   assert.ok(!f.events.includes('stop'));
   t.mock.timers.tick(1);
   assert.deepEqual(f.events.slice(-2), ['stopping', 'stop']);
@@ -41,8 +44,7 @@ test('silêncio de 3s reinicia a cada resultado, acumula segmentos e conclui uma
 test('teto de 15s e watchdog encerram mesmo sem onend do navegador', (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const f = fixture();
-  for (let i = 0; i < 7; i++) { t.mock.timers.tick(2000); f.say('pedido longo'); }
-  t.mock.timers.tick(1000);
+  for (let i = 0; i < 15; i++) { t.mock.timers.tick(1000); f.say('pedido longo'); }
   assert.ok(f.events.includes('stopping'));
   t.mock.timers.tick(800);
   assert.ok(f.events.includes('complete:pedido longo'));

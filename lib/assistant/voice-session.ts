@@ -1,8 +1,25 @@
 export type RecognitionEvent = { results: ArrayLike<ArrayLike<{ transcript: string }>> };
 
+// Snappier listening: stop after a shorter silence and keep a bounded ceiling/watchdog.
+const SILENCE_MS = 1500;
+const WATCHDOG_MS = 800;
+const MAX_LISTEN_MS = 15000;
+
+// Drops adjacent duplicate words (case-insensitive) that mobile engines echo, e.g.
+// "me me me diga" -> "me diga". Deliberate emphasis is rare in short voice commands.
+function dedupeAdjacentWords(text: string): string {
+  const out: string[] = [];
+  for (const word of text.split(/\s+/)) {
+    if (!word) continue;
+    if (out.length && out[out.length - 1].toLocaleLowerCase('pt-BR') === word.toLocaleLowerCase('pt-BR')) continue;
+    out.push(word);
+  }
+  return out.join(' ');
+}
+
 // Android may return progressively longer copies of the same phrase as segments.
 export function mergeVoiceSegments(segments: readonly string[]): string {
-  return segments.reduce((text, segment) => {
+  const merged = segments.reduce((text, segment) => {
     const next = segment.trim();
     if (!text) return next;
     const left = text.trim().split(/\s+/);
@@ -14,6 +31,7 @@ export function mergeVoiceSegments(segments: readonly string[]): string {
     }
     return `${text} ${next}`.trim();
   }, '');
+  return dedupeAdjacentWords(merged);
 }
 export type Recognition = {
   lang: string; interimResults: boolean; continuous: boolean;
@@ -57,10 +75,10 @@ export function startVoiceSession(recognition: Recognition, callbacks: {
     stopping = true;
     clearTimeout(silence); clearTimeout(deadline);
     callbacks.stopping();
-    watchdog = setTimeout(complete, 800);
+    watchdog = setTimeout(complete, WATCHDOG_MS);
     try { recognition.stop(); } catch { complete(); }
   }
-  function resetSilence() { clearTimeout(silence); silence = setTimeout(stop, 3000); }
+  function resetSilence() { clearTimeout(silence); silence = setTimeout(stop, SILENCE_MS); }
   recognition.lang = 'pt-BR';
   recognition.continuous = true;
   recognition.interimResults = true;
@@ -79,7 +97,7 @@ export function startVoiceSession(recognition: Recognition, callbacks: {
   };
   recognition.onerror = () => { if (stopping) complete(); else fail(); };
   resetSilence();
-  deadline = setTimeout(stop, 15000);
+  deadline = setTimeout(stop, MAX_LISTEN_MS);
   try { recognition.start(); } catch { fail(); }
   return {
     stop,

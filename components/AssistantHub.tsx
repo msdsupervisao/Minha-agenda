@@ -128,7 +128,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
     setTranscript(clean);
     setState('processing');
     setReply('');
-    await wait(320);
+    await wait(120);
 
     if (agentPilot) {
       try { await handleAgentResult(await sendAgentTurn({ text: clean, source, weatherLocation: weatherLocation.current }, handleProgress)); }
