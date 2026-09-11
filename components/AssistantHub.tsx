@@ -81,6 +81,14 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
     void speechPlayer.current.speak(stripMarkdownForSpeech(text));
   }
 
+  // Activate audio playback inside a user gesture so mobile browsers allow the TTS clip
+  // that arrives later, after the async agent turn, to play (instead of silently falling
+  // back to the browser voice).
+  function primeSpeech() {
+    speechPlayer.current ??= createSpeechPlayer(speakBrowser);
+    speechPlayer.current.unlock();
+  }
+
   function speakBrowser(text: string) {
     if (!('speechSynthesis' in window)) return;
     const synthesis = window.speechSynthesis;
@@ -107,6 +115,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
   async function processCommand(command: string, source: 'voice' | 'text') {
     const clean = command.trim();
     if (!clean || state === 'processing' || state === 'action' || agentApprovalId) return;
+    primeSpeech();
     speechPlayer.current?.cancel();
     voiceSession.current?.cancel();
     voiceSession.current = null;
@@ -181,6 +190,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
     if (timer.current) window.clearTimeout(timer.current);
     speechPlayer.current?.cancel();
     window.speechSynthesis?.cancel();
+    primeSpeech();
     setState('listening');
     setTranscript('');
     setReply('Pode falar.');
