@@ -11,6 +11,7 @@ import { sendAgentTurn, verifiedScheduleHandoff, type AgentClientResult } from '
 import type { AgentProgress } from '@/lib/agent/contracts';
 import { selectPortugueseVoice, speechTextForReply, stripMarkdownForSpeech } from '@/lib/assistant/speech';
 import { startVoiceSession, type Recognition } from '@/lib/assistant/voice-session';
+import { createSpeechPlayer } from '@/lib/tts/client';
 import GyroCore from './GyroCore';
 import styles from './AssistantHub.module.css';
 
@@ -51,6 +52,8 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
   const scheduleWatch = useRef(0);
   const engine = useRef<ConversationClient | null>(null);
   const voiceSession = useRef<ReturnType<typeof startVoiceSession> | null>(null);
+  const speechPlayer = useRef<ReturnType<typeof createSpeechPlayer> | null>(null);
+  useEffect(() => () => speechPlayer.current?.cancel(), []);
   const weatherLocation = useRef<{ latitude: number; longitude: number } | undefined>(undefined);
   const [locationNotice, setLocationNotice] = useState('');
   function enableWeatherLocation() {
@@ -74,6 +77,11 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
   }, [agentPilot, dataProvider]);
 
   function speak(text: string) {
+    speechPlayer.current ??= createSpeechPlayer(speakBrowser);
+    void speechPlayer.current.speak(stripMarkdownForSpeech(text));
+  }
+
+  function speakBrowser(text: string) {
     if (!('speechSynthesis' in window)) return;
     const synthesis = window.speechSynthesis;
     synthesis.cancel();
@@ -99,6 +107,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
   async function processCommand(command: string, source: 'voice' | 'text') {
     const clean = command.trim();
     if (!clean || state === 'processing' || state === 'action' || agentApprovalId) return;
+    speechPlayer.current?.cancel();
     voiceSession.current?.cancel();
     voiceSession.current = null;
     if (timer.current) window.clearTimeout(timer.current);
@@ -170,6 +179,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
     }
     const recognition = new Constructor();
     if (timer.current) window.clearTimeout(timer.current);
+    speechPlayer.current?.cancel();
     window.speechSynthesis?.cancel();
     setState('listening');
     setTranscript('');

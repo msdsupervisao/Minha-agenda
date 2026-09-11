@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Vozes do dispositivo</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 16px; background:#0b1220; color:#e5e7eb; }
+  h1 { font-size: 18px; }
+  .v { padding:8px 10px; border:1px solid #1f2a44; border-radius:8px; margin:6px 0; }
+  .pt { border-color:#2563eb; background:#0f1b3a; }
+  small { color:#93a4c3; }
+  button { padding:10px 14px; border-radius:8px; border:0; background:#2563eb; color:#fff; font-size:15px; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; margin:8px 0; }
+</style>
+</head>
+<body>
+  <h1>Vozes disponíveis neste dispositivo</h1>
+  <div class="row">
+    <button onclick="load()">Recarregar lista</button>
+    <button onclick="testSel()">Testar a voz que o app escolheria</button>
+  </div>
+  <div id="count"></div>
+  <div id="list"></div>
+<script>
+function scorePt(v){
+  const lang=v.lang.toLowerCase(), name=v.name.toLowerCase();
+  let s = (lang==='pt-br'||lang==='pt_br')?100:50;
+  if(name.includes('google')) s+=20;
+  if(name.includes('microsoft')) s+=15;
+  if(/(francisca|antonio|maria|luciana|felipe|helena|daniel|male|masculin)/.test(name)) s+=10;
+  return s;
+}
+function render(voices){
+  const pt=voices.filter(v=>v.lang.toLowerCase().startsWith('pt'));
+  document.getElementById('count').innerHTML =
+    '<b>'+voices.length+'</b> vozes no total · <b>'+pt.length+'</b> em português.';
+  const ordered=[...voices].sort((a,b)=>scorePt(b)-scorePt(a));
+  document.getElementById('list').innerHTML = ordered.map(v=>
+    '<div class="v '+(v.lang.toLowerCase().startsWith('pt')?'pt':'')+'">'
+    + '<div><b>'+v.name+'</b></div>'
+    + '<small>lang: '+v.lang+' · local: '+v.localService+' · default: '+v.default+'</small>'
+    + '</div>').join('');
+}
+function load(){
+  const vs = speechSynthesis.getVoices();
+  if(vs.length) render(vs);
+}
+function testSel(){
+  const pt = speechSynthesis.getVoices().filter(v=>v.lang.toLowerCase().startsWith('pt'));
+  if(!pt.length){ alert('Nenhuma voz pt neste aparelho.'); return; }
+  const best = pt.sort((a,b)=>scorePt(b)-scorePt(a))[0];
+  const u = new SpeechSynthesisUtterance('Olá, esta é a voz que o aplicativo escolheria. Nome: '+best.name);
+  u.voice = best; u.lang='pt-BR'; speechSynthesis.speak(u);
+  alert('Voz escolhida: '+best.name+' ('+best.lang+')');
+}
+speechSynthesis.onvoiceschanged = load;
+load();
+setTimeout(load, 500);
+</script>
+</body>
+</html>
