@@ -1,9 +1,12 @@
 export type RecognitionEvent = { results: ArrayLike<ArrayLike<{ transcript: string }>> };
 
-// Snappier listening: stop after a shorter silence and keep a bounded ceiling/watchdog.
-const SILENCE_MS = 1500;
+// Mobile recognition can take a moment to deliver the first interim result. Give the
+// speaker time to begin, then allow natural pauses between phrases.
+const INITIAL_SILENCE_MS = 3000;
+const SILENCE_MS = 3000;
 const WATCHDOG_MS = 800;
-const MAX_LISTEN_MS = 15000;
+const MAX_LISTEN_MS = 30000;
+const STARTUP_MS = 15000;
 
 // Drops adjacent duplicate words (case-insensitive) that mobile engines echo, e.g.
 // "me me me diga" -> "me diga". Deliberate emphasis is rare in short voice commands.
@@ -39,6 +42,9 @@ export type Recognition = {
   onresult: ((event: RecognitionEvent) => void) | null;
   onerror: ((event: { error: string }) => void) | null;
   onend: (() => void) | null;
+  onstart?: (() => void) | null;
+  onspeechstart?: (() => void) | null;
+  onspeechend?: (() => void) | null;
 };
 
 // A session owns all callbacks and timers so late browser events cannot submit twice.
@@ -49,12 +55,17 @@ export function startVoiceSession(recognition: Recognition, callbacks: {
   let previous = '';
   let stopping = false;
   let done = false;
+  let started = false;
+  let speaking = false;
+  let startup: ReturnType<typeof setTimeout>;
   let silence: ReturnType<typeof setTimeout>;
   let deadline: ReturnType<typeof setTimeout>;
   let watchdog: ReturnType<typeof setTimeout> | undefined;
   function cleanup() {
     clearTimeout(silence); clearTimeout(deadline); clearTimeout(watchdog);
+    clearTimeout(startup);
     recognition.onresult = recognition.onerror = recognition.onend = null;
+    recognition.onstart = recognition.onspeechstart = recognition.onspeechend = null;
   }
   function complete() {
     if (done) return;
@@ -74,30 +85,55 @@ export function startVoiceSession(recognition: Recognition, callbacks: {
     if (done || stopping) return;
     stopping = true;
     clearTimeout(silence); clearTimeout(deadline);
+    clearTimeout(startup);
     callbacks.stopping();
     watchdog = setTimeout(complete, WATCHDOG_MS);
     try { recognition.stop(); } catch { complete(); }
   }
-  function resetSilence() { clearTimeout(silence); silence = setTimeout(stop, SILENCE_MS); }
+  function armSilence(delay: number) { clearTimeout(silence); silence = setTimeout(stop, delay); }
   recognition.lang = 'pt-BR';
   recognition.continuous = true;
   recognition.interimResults = true;
+  function beginListening() {
+    if (done || stopping || started) return;
+    started = true;
+    clearTimeout(startup);
+    armSilence(INITIAL_SILENCE_MS);
+    deadline = setTimeout(stop, MAX_LISTEN_MS);
+  }
+  recognition.onstart = beginListening;
+  recognition.onspeechstart = () => {
+    if (done || stopping) return;
+    beginListening();
+    speaking = true;
+    clearTimeout(silence);
+  };
+  recognition.onspeechend = () => {
+    if (done || stopping) return;
+    speaking = false;
+    armSilence(SILENCE_MS);
+  };
   recognition.onresult = (event) => {
     if (done) return;
+    beginListening();
     text = mergeVoiceSegments([previous, ...Array.from(event.results, (result) => result[0].transcript)]);
     callbacks.transcript(text);
-    if (!stopping) resetSilence();
+    if (!stopping && !speaking) armSilence(SILENCE_MS);
   };
   recognition.onend = () => {
     if (done) return;
     if (stopping) { complete(); return; }
+    if (speaking) { speaking = false; armSilence(SILENCE_MS); }
     // Some mobile engines end early despite continuous=true. Preserve this segment.
     previous = text;
     try { recognition.start(); } catch { stop(); }
   };
-  recognition.onerror = () => { if (stopping) complete(); else fail(); };
-  resetSilence();
-  deadline = setTimeout(stop, MAX_LISTEN_MS);
+  recognition.onerror = (event) => {
+    if (stopping) complete();
+    else if (event.error !== 'no-speech') fail();
+    // A normal no-speech event is followed by onend; keep the bounded session alive.
+  };
+  startup = setTimeout(fail, STARTUP_MS);
   try { recognition.start(); } catch { fail(); }
   return {
     stop,
