@@ -10,7 +10,7 @@
       "open_url", "search_web",
       "execute_command", "get_system_info", "get_time", "get_date",
       "set_volume", "get_volume", "take_screenshot", "read_clipboard", "write_clipboard",
-      "resolve_recipient", "load_notice_model", "prepare_whatsapp_message",
+      "resolve_recipient", "load_notice_model", "compose_whatsapp_message", "prepare_whatsapp_message",
       "schedule_whatsapp_message", "send_whatsapp_message", "financial_action"
     ],
     "mundo": {
@@ -1373,6 +1373,136 @@
         "evidencia_para_sucesso": ["resposta curta de prontidão; nada executado"]
       },
       "observacoes": "Wake word ativa; não é comando. Não age sem pedido."
+    },
+    {
+      "id": "msg-compose-77",
+      "categoria": "compor_mensagem",
+      "descricao": "IA compõe o texto do aviso (sem modelo fixo) para turma real",
+      "contexto": { "mundo_turmas_visiveis": true },
+      "turnos": [{ "papel": "usuario", "fala": "escreve um aviso pro Kids Tecnologia avisando que amanhã não vai ter aula" }],
+      "esperado": {
+        "objetivo": "compor um texto de aviso original para o grupo Kids Tecnologia (público: pais) e confirmar antes de enviar",
+        "ferramentas": ["resolve_recipient", "compose_whatsapp_message"],
+        "args_esperados": { "grupo": "Kids Tecnologia" },
+        "pedir_confirmacao": true,
+        "deve_perguntar": false,
+        "pergunta_sobre": null,
+        "nunca_inventar": ["um motivo do cancelamento que o usuário não deu", "data/hora além de 'amanhã'", "confirmação de entrega"],
+        "evidencia_para_sucesso": ["rascunho composto pela IA exibido para revisão; envio só após confirmação"]
+      },
+      "observacoes": "Substitui load_notice_model por composição. O texto é gerado, não carregado de modelo fixo; mostrar rascunho e confirmar."
+    },
+    {
+      "id": "msg-compose-78",
+      "categoria": "compor_mensagem",
+      "descricao": "Paráfrase de 77 → mesma intenção, texto composto igualmente",
+      "contexto": { "mundo_turmas_visiveis": true },
+      "turnos": [{ "papel": "usuario", "fala": "monta uma mensagem pros pais do Kids Tecnologia que amanhã a aula foi cancelada" }],
+      "esperado": {
+        "objetivo": "compor aviso original para Kids Tecnologia e confirmar antes de enviar (mesmo resultado de msg-compose-77)",
+        "ferramentas": ["resolve_recipient", "compose_whatsapp_message"],
+        "args_esperados": { "grupo": "Kids Tecnologia" },
+        "pedir_confirmacao": true,
+        "deve_perguntar": false,
+        "pergunta_sobre": null,
+        "nunca_inventar": ["motivo não informado", "confirmação de entrega"],
+        "evidencia_para_sucesso": ["rascunho composto exibido; envio só após confirmação"]
+      },
+      "observacoes": "Anti-regex: 'escreve/monta/mensagem/aviso' são a mesma intenção de composição que msg-compose-77."
+    },
+    {
+      "id": "msg-compose-79",
+      "categoria": "compor_mensagem",
+      "descricao": "Compor sobre 'a prova' sem data → perguntar, não inventar",
+      "contexto": { "mundo_turmas_visiveis": true },
+      "turnos": [{ "papel": "usuario", "fala": "faz um aviso pro Design Gráfico sobre a prova" }],
+      "esperado": {
+        "objetivo": "identificar que falta um dado crítico (quando/o que da prova) antes de compor o texto final",
+        "ferramentas": ["resolve_recipient"],
+        "args_esperados": { "grupo": "Design Gráfico" },
+        "pedir_confirmacao": true,
+        "deve_perguntar": true,
+        "pergunta_sobre": "qual a data/detalhe da prova para compor o aviso",
+        "nunca_inventar": ["data/horário da prova", "conteúdo da prova", "que a prova existe"],
+        "evidencia_para_sucesso": ["pergunta feita; nenhum texto com dados inventados"]
+      },
+      "observacoes": "Compor não é inventar: faltou dado crítico → perguntar. Só depois compõe."
+    },
+    {
+      "id": "msg-compose-80",
+      "categoria": "compor_mensagem",
+      "descricao": "Correção de estilo sobre rascunho composto → recompor mantendo foco",
+      "contexto": {
+        "memoria_operacional": { "rascunho_atual": { "grupo": "Kids Tecnologia", "texto": "<aviso composto, tom formal e longo>" } }
+      },
+      "turnos": [{ "papel": "usuario", "fala": "deixa mais curto e mais informal" }],
+      "esperado": {
+        "objetivo": "recompor o mesmo aviso (Kids Tecnologia) mais curto e informal, sem trocar de turma nem de assunto",
+        "ferramentas": ["compose_whatsapp_message"],
+        "args_esperados": { "grupo": "Kids Tecnologia" },
+        "pedir_confirmacao": true,
+        "deve_perguntar": false,
+        "pergunta_sobre": null,
+        "nunca_inventar": ["fatos novos não presentes no rascunho", "outra turma"],
+        "evidencia_para_sucesso": ["novo rascunho mais curto/informal exibido; mesmo destino"]
+      },
+      "observacoes": "Correção = patch ao rascunho corrente (§4.3), mantém foco de turma; não é comando novo."
+    },
+    {
+      "id": "msg-compose-81",
+      "categoria": "compor_mensagem",
+      "descricao": "Compor para 'tecnologia' ambíguo → resolver/perguntar antes de compor final",
+      "contexto": {
+        "memoria_longo_prazo": [{ "tipo": "entidade", "conteudo": "turmas: Kids Tecnologia, Design Gráfico, Informática" }]
+      },
+      "turnos": [{ "papel": "usuario", "fala": "escreve um aviso pra galera de tecnologia" }],
+      "esperado": {
+        "objetivo": "resolver 'tecnologia' para Kids Tecnologia (única com o termo) e confirmar antes de compor/enviar; ou perguntar",
+        "ferramentas": ["resolve_recipient", "compose_whatsapp_message"],
+        "args_esperados": { "candidato": "Kids Tecnologia" },
+        "pedir_confirmacao": true,
+        "deve_perguntar": true,
+        "pergunta_sobre": "confirmar que 'tecnologia' = Kids Tecnologia antes de compor",
+        "nunca_inventar": ["um grupo 'galera de tecnologia'", "assunto do aviso não informado"],
+        "evidencia_para_sucesso": ["destino validado; rascunho composto só depois; envio só após confirmação"]
+      },
+      "observacoes": "A composição herda a regra §6.2: destino incerto → validar/perguntar antes de compor o texto final."
+    },
+    {
+      "id": "msg-compose-82",
+      "categoria": "compor_mensagem",
+      "descricao": "Tom adaptado ao público da turma (alunos vs pais)",
+      "contexto": { "mundo_turmas_visiveis": true },
+      "turnos": [{ "papel": "usuario", "fala": "manda um aviso pro Informática que a aula de hoje vai atrasar 30 minutos" }],
+      "esperado": {
+        "objetivo": "compor aviso para Informática (público: alunos) em tom adequado ao público e confirmar antes de enviar",
+        "ferramentas": ["resolve_recipient", "compose_whatsapp_message"],
+        "args_esperados": { "grupo": "Informática" },
+        "pedir_confirmacao": true,
+        "deve_perguntar": false,
+        "pergunta_sobre": null,
+        "nunca_inventar": ["motivo do atraso não informado", "confirmação de entrega"],
+        "evidencia_para_sucesso": ["rascunho composto com tom coerente ao público; envio só após confirmação"]
+      },
+      "observacoes": "Composição usa o campo 'publico' da turma para calibrar tom; não muda os fatos."
+    },
+    {
+      "id": "msg-model-vs-compose-83",
+      "categoria": "compor_mensagem",
+      "descricao": "Usuário pede modelo fixo explicitamente → NÃO compor, usar load_notice_model",
+      "contexto": { "mundo_turmas_visiveis": true },
+      "turnos": [{ "papel": "usuario", "fala": "usa o modelo 1 mesmo do Kids Tecnologia" }],
+      "esperado": {
+        "objetivo": "carregar o modelo fixo 1 de Kids Tecnologia (o usuário pediu modelo explícito, não composição)",
+        "ferramentas": ["resolve_recipient", "load_notice_model"],
+        "args_esperados": { "modelo": 1, "turma": "Kids Tecnologia" },
+        "pedir_confirmacao": true,
+        "deve_perguntar": false,
+        "pergunta_sobre": null,
+        "nunca_inventar": ["alterar o texto do modelo sem pedido"],
+        "evidencia_para_sucesso": ["modelo 1 de Kids Tecnologia carregado; confirmar antes de enviar"]
+      },
+      "observacoes": "A composição é o padrão, mas o caminho de modelo fixo continua válido quando pedido explicitamente ('modelo N', 'o de sempre')."
     }
   ]
 }

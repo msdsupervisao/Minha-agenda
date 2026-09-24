@@ -27,6 +27,7 @@ export const EVAL_TOOL_COMPATIBILITY = {
   write_clipboard: planned('Requer acesso local e verificação por releitura.'),
   resolve_recipient: implemented(['find_classes'], 'Resolve candidatos somente contra turmas reais cadastradas.'),
   load_notice_model: implemented(['get_notice_template'], 'Carrega o modelo pelo UUID real da turma e número validado.'),
+  compose_whatsapp_message: implemented(['compose_notice'], 'Escreve um aviso novo por IA para uma turma real; o envio/agendamento continua em prepare_notice_schedule (bodySource=composed) com confirmação.'),
   prepare_whatsapp_message: planned('Requer contrato de rascunho separado de envio.'),
   schedule_whatsapp_message: partial(['prepare_notice_schedule', 'get_schedule_status'], 'Cria handoff confirmado e consulta o ACK; a execução final ainda depende do aplicativo Android.'),
   send_whatsapp_message: planned('Requer confirmação de destinatário/corpo/canal e evidência honesta do envio.'),

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Source } from '@/lib/assistant/types';
 import { getAiRuntimeConfig } from '@/lib/assistant/ai-config';
+import { composeNoticeMessage } from '@/lib/notices/ai-generator';
 import { createSupabasePersonalAgendaStore, type PersonalAgendaStore } from '@/lib/data/agent-personal-repository';
 import { loadAgentContext } from './context-builder';
 import type { AgentContextState, AgentMessage, AgentProvider, AgentProgress } from './contracts';
@@ -57,11 +58,39 @@ export async function runAgentPilot(
   const conversation = options.conversation || loadedContext?.conversation || [];
   const contextState = options.contextState || loadedContext?.state || emptyAgentContextState();
   const scheduleStore = options.scheduleStore || createSupabaseScheduleHandoffStore(client);
+  const compose = config.activeProvider === 'openai' && config.apiKey
+    ? async (args: {
+        schoolClass: import('@/lib/assistant/types').SchoolClass;
+        topic: string;
+        styleHint: string | null;
+        baseMessage: string | null;
+      }) => {
+        const result = await composeNoticeMessage({
+          className: args.schoolClass.name,
+          course: args.schoolClass.course,
+          teacher: args.schoolClass.teacher,
+          schedule: args.schoolClass.schedule,
+          topic: args.topic,
+          styleReference: [
+            args.schoolClass.noticeTemplateDirect,
+            args.schoolClass.noticeTemplateMotivational,
+            args.schoolClass.noticeTemplateImpactful,
+          ].filter((text): text is string => Boolean(text)),
+          styleHint: args.styleHint,
+          baseMessage: args.baseMessage,
+        }, {
+          apiKey: config.apiKey!,
+          model: config.model,
+          timeoutMs: Math.max(config.timeoutMs, 15000),
+        });
+        return { message: result.message };
+      }
+    : undefined;
   const registry = new ToolRegistry([
     ...createCourseKnowledgeTools(),
     ...createWeatherTools(),
     ...createClassTools(catalog),
-    ...createNoticeScheduleTools(catalog, scheduleStore),
+    ...createNoticeScheduleTools(catalog, scheduleStore, { compose }),
     ...createPersonalAgendaTools(options.personalStore || createSupabasePersonalAgendaStore(client)),
   ]);
   return new AgentOrchestrator(provider, registry, { onProgress: options.onProgress }).run({

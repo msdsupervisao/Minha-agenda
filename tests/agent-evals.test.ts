@@ -10,13 +10,13 @@ import {
 
 const fixture = parseAgentEvalFixture(fixtureJson);
 
-test('fixture do Claude possui 76 casos únicos e cobre as 26 ferramentas declaradas', () => {
+test('fixture do Claude possui 83 casos únicos e cobre as 27 ferramentas declaradas', () => {
   assert.deepEqual(summarizeAgentEvalFixture(fixture), {
-    cases: 76,
-    uniqueCaseIds: 76,
-    declaredTools: 26,
-    usedTools: 26,
-    categories: 24,
+    cases: 83,
+    uniqueCaseIds: 83,
+    declaredTools: 27,
+    usedTools: 27,
+    categories: 25,
   });
 });
 
@@ -25,9 +25,10 @@ test('todo nome conceitual possui decisão explícita de compatibilidade', () =>
   const implemented = Object.entries(EVAL_TOOL_COMPATIBILITY)
     .filter(([, compatibility]) => compatibility.status === 'implemented')
     .map(([name]) => name);
-  assert.deepEqual(implemented, ['resolve_recipient', 'load_notice_model']);
+  assert.deepEqual(implemented, ['resolve_recipient', 'load_notice_model', 'compose_whatsapp_message']);
   assert.deepEqual(EVAL_TOOL_COMPATIBILITY.resolve_recipient.runtimeTools, ['find_classes']);
   assert.deepEqual(EVAL_TOOL_COMPATIBILITY.load_notice_model.runtimeTools, ['get_notice_template']);
+  assert.deepEqual(EVAL_TOOL_COMPATIBILITY.compose_whatsapp_message.runtimeTools, ['compose_notice']);
   assert.equal(EVAL_TOOL_COMPATIBILITY.schedule_whatsapp_message.status, 'partially_implemented');
   assert.deepEqual(EVAL_TOOL_COMPATIBILITY.schedule_whatsapp_message.runtimeTools, ['prepare_notice_schedule', 'get_schedule_status']);
   assert.equal(EVAL_TOOL_COMPATIBILITY.financial_action.status, 'intentionally_blocked');

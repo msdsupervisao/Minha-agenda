@@ -217,6 +217,52 @@ Nome não resolvido = perguntar, nunca criar grupo fictício. Ver o caso obrigat
 
 ---
 
+## 5A. Composição de conteúdo de mensagem (a IA escreve, não "carrega modelo")
+
+**Problema que isto resolve:** hoje o texto dos avisos vem de *modelos fixos*
+(`load_notice_model` → "modelo 1/2/3"), o que deixa a mensagem engessada e repetitiva. O
+padrão passa a ser: **a IA compõe o texto** a partir da intenção do usuário e do contexto
+da turma (ferramenta `compose_whatsapp_message`). O modelo fixo **não some** — vira uma
+opção explícita (§5A.4), não o único caminho.
+
+### 5A.1 Onde a composição entra no ciclo
+Depois de **resolver o destinatário** (§5 classe 8 e §6.2) e **antes** de preparar/enviar:
+
+```
+resolver turma (validada) → compor texto (IA) → mostrar rascunho → confirmar → enviar
+```
+
+A composição **nunca** pula a resolução de destino nem a confirmação. Compor primeiro e
+descobrir a turma depois é regressão (poderia escrever para o grupo errado).
+
+### 5A.2 O que a composição pode e não pode inventar
+- **Pode** escolher palavras, tom, saudação, estrutura e emojis proporcionais.
+- **Não pode inventar fato**: data, horário, motivo, valor, local, nome de professor, link
+  ou qualquer dado que o usuário não deu e que não esteja no cadastro. Faltou dado
+  **crítico** para o aviso fazer sentido (ex.: "aviso sobre a prova" sem data) → **pergunte**
+  (§4.1), não preencha com suposição. Codificado nos casos `msg-compose-*`.
+
+### 5A.3 Tom por público e por preferência
+- A turma carrega `publico` (pais | alunos). O tom se adapta: mais formal/cuidadoso para
+  **pais**, mais direto para **alunos** — sem mudar os fatos.
+- Preferências duráveis de estilo do usuário (§3.1: "prefiro avisos curtos") calibram a
+  composição. Correções de estilo em cima de um rascunho ("deixa mais curto", "mais
+  informal") são **patch ao rascunho corrente** (§4.3), mantendo turma e assunto — não um
+  pedido novo.
+
+### 5A.4 Modelo fixo continua válido — quando pedido
+Se o usuário pede explicitamente um modelo ("usa o modelo 2", "o de sempre"), o caminho
+`load_notice_model` é o certo — não sobrescrever a escolha dele compondo do zero. A
+composição é o **padrão**; o modelo fixo é a **exceção explícita**.
+
+### 5A.5 Confirmação e verificação (herdadas da classe 8)
+Todo envio/agendamento de mensagem composta segue a matriz de risco: **confirmar
+destinatário + corpo + canal** antes de enviar, mostrar o texto exato, e **nunca dizer
+"entregue"** no fluxo assistido de WhatsApp. Sucesso = envio despachado observado, não
+"escrevi o texto".
+
+---
+
 ## 6. Avaliação (o arquivo de casos)
 
 ### 6.1 Como os casos são estruturados
@@ -425,4 +471,5 @@ Notas de julgamento:
 
 ## 12. Arquivos entregues por esta tarefa
 1. `docs/claude-arquitetura-conversacional.md` (este documento).
-2. `tests/fixtures/agent-conversations.pt-BR.json` (68 casos de avaliação em pt-BR).
+2. `tests/fixtures/agent-conversations.pt-BR.json` (83 casos de avaliação em pt-BR,
+   incluindo `msg-compose-*`: composição de mensagem pela IA).

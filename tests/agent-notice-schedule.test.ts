@@ -201,6 +201,97 @@ test('agente consulta o ACK antes de afirmar que o celular agendou', async () =>
   });
 });
 
+test('compose_notice devolve um rascunho escrito pela IA sem enviar nada', async () => {
+  const store = new MemoryScheduleStore();
+  const registry = new ToolRegistry(createNoticeScheduleTools(catalog, store, {
+    compose: async () => ({ message: 'Amanhã não teremos aula. Até breve!' }),
+  }));
+  const result = await registry.execute({
+    callId: 'compose-1',
+    name: 'compose_notice',
+    arguments: { classId: design.id, topic: 'amanhã não tem aula', styleHint: null, baseMessage: null },
+  }, context);
+  assert.equal(result.status, 'success');
+  const output = result.output as Record<string, unknown>;
+  assert.equal(output.composed, true);
+  assert.equal(output.recipient, 'Design Gráfico — Turma');
+  assert.equal(output.body, 'Amanhã não teremos aula. Até breve!');
+  assert.equal(store.rows.length, 0);
+});
+
+test('compose_notice avisa quando a composição por IA não está disponível', async () => {
+  const store = new MemoryScheduleStore();
+  const registry = new ToolRegistry(createNoticeScheduleTools(catalog, store));
+  const result = await registry.execute({
+    callId: 'compose-off',
+    name: 'compose_notice',
+    arguments: { classId: design.id, topic: 'recado', styleHint: null, baseMessage: null },
+  }, context);
+  assert.equal(result.status, 'error');
+  assert.equal(result.errorCode, 'composition_unavailable');
+  assert.equal(store.rows.length, 0);
+});
+
+test('aviso composto vira handoff depois da aprovação exata', async () => {
+  const composedBody = 'Amanhã não teremos aula. Até breve!';
+  const store = new MemoryScheduleStore();
+  const registry = new ToolRegistry(createNoticeScheduleTools(catalog, store, {
+    compose: async () => ({ message: composedBody }),
+  }));
+  const call = {
+    callId: 'schedule-composed',
+    name: 'prepare_notice_schedule',
+    arguments: {
+      classId: design.id,
+      bodySource: 'composed',
+      modelNumber: null,
+      recipientName: design.whatsappGroup!,
+      body: composedBody,
+      scheduleKind: 'local_datetime',
+      localDueAt: '2026-08-28T18:00',
+      delayMinutes: null,
+    },
+  };
+  const pending = await registry.execute(call, context);
+  assert.equal(pending.status, 'approval_required');
+  assert.match(pending.approvalMessage || '', /Design Gráfico — Turma/);
+  assert.match(pending.approvalMessage || '', /não teremos aula/);
+  assert.equal(store.rows.length, 0);
+
+  const executed = await registry.execute(call, context, new Set([call.callId]));
+  assert.equal(executed.status, 'success');
+  assert.equal(executed.verified, true);
+  assert.equal(store.rows.length, 1);
+  const output = executed.output as Record<string, unknown>;
+  assert.equal(output.status, 'awaiting_device');
+  assert.equal(output.recipientName, 'Design Gráfico — Turma');
+  assert.equal(output.body, composedBody);
+});
+
+test('aviso composto ainda exige destinatário real da turma', async () => {
+  const store = new MemoryScheduleStore();
+  const registry = new ToolRegistry(createNoticeScheduleTools(catalog, store, {
+    compose: async () => ({ message: 'texto' }),
+  }));
+  const result = await registry.execute({
+    callId: 'schedule-composed-grounding',
+    name: 'prepare_notice_schedule',
+    arguments: {
+      classId: design.id,
+      bodySource: 'composed',
+      modelNumber: null,
+      recipientName: 'aqueles tecnologia',
+      body: 'Amanhã não teremos aula.',
+      scheduleKind: 'local_datetime',
+      localDueAt: '2026-08-28T18:00',
+      delayMinutes: null,
+    },
+  }, context, new Set(['schedule-composed-grounding']));
+  assert.equal(result.status, 'error');
+  assert.equal(result.errorCode, 'grounding_mismatch');
+  assert.equal(store.rows.length, 0);
+});
+
 class MemoryScheduleStore implements ScheduleHandoffStore {
   readonly rows: Array<{
     id: string;

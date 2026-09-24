@@ -8,9 +8,17 @@ import {
   scheduleDueAtIssue,
   SCHEDULE_HANDOFF_TTL_MS,
 } from '@/lib/schedule/handoff';
+import type { SchoolClass } from '@/lib/assistant/types';
 import type { AgentExecutionContext, AgentTool, JsonObject, JsonValue } from '../contracts';
 import { AgentToolExecutionError } from '../tool-registry';
 import type { ClassCatalog } from './classes';
+
+export type NoticeComposer = (args: {
+  schoolClass: SchoolClass;
+  topic: string;
+  styleHint: string | null;
+  baseMessage: string | null;
+}) => Promise<{ message: string }>;
 
 type ScheduleDraft = {
   recipientName: string;
@@ -69,14 +77,18 @@ export function createSupabaseScheduleHandoffStore(client: SupabaseClient): Sche
 export function createNoticeScheduleTools(
   catalog: ClassCatalog,
   store: ScheduleHandoffStore,
+  options: { compose?: NoticeComposer } = {},
 ): AgentTool<JsonObject>[] {
+  const compose = options.compose;
   return [{
     name: 'prepare_notice_schedule',
-    description: 'Depois da confirmação, cria um handoff para o celular com aviso de uma turma real. Use este fluxo quando o objetivo for um aviso de aula no WhatsApp, inclusive em pedidos escritos como “me lembre de mandar o aviso”. Para “daqui a N minutos/horas”, use scheduleKind=delay_minutes; para data e hora de calendário, use scheduleKind=local_datetime. Isso ainda NÃO significa que o celular agendou: status awaiting_device exige abrir o app e aguardar o ACK.',
+    description: 'Depois da confirmação, cria um handoff para o celular com aviso de uma turma real. Use este fluxo quando o objetivo for um aviso de aula no WhatsApp, inclusive em pedidos escritos como “me lembre de mandar o aviso”. Para o texto: bodySource=model usa um dos 3 modelos fixos (informe modelNumber e o body exato do modelo); bodySource=composed usa um texto escrito por compose_notice (modelNumber=null e body igual ao rascunho aprovado). Para “daqui a N minutos/horas”, use scheduleKind=delay_minutes; para data e hora de calendário, use scheduleKind=local_datetime. Isso ainda NÃO significa que o celular agendou: status awaiting_device exige abrir o app e aguardar o ACK.',
     risk: 'external',
     inputSchema: z.object({
       classId: z.string().uuid(),
-      modelNumber: z.number().int().min(1).max(3),
+      bodySource: z.enum(['model', 'composed']),
+      modelNumber: z.number().int().min(1).max(3).nullable()
+        .describe('Para bodySource=model: 1, 2 ou 3. Para bodySource=composed: null.'),
       recipientName: z.string().trim().min(1).max(200),
       body: z.string().trim().min(1).max(4000),
       scheduleKind: z.enum(['local_datetime', 'delay_minutes']),
@@ -90,6 +102,8 @@ export function createNoticeScheduleTools(
       const validLocal = value.scheduleKind === 'local_datetime' && value.localDueAt !== null && value.delayMinutes === null;
       const validDelay = value.scheduleKind === 'delay_minutes' && value.localDueAt === null && value.delayMinutes !== null;
       if (!validLocal && !validDelay) issue.addIssue({ code: 'custom', message: 'Combinação de horário inválida.' });
+      if (value.bodySource === 'model' && value.modelNumber === null) issue.addIssue({ code: 'custom', message: 'Informe modelNumber quando bodySource for model.' });
+      if (value.bodySource === 'composed' && value.modelNumber !== null) issue.addIssue({ code: 'custom', message: 'Não informe modelNumber quando bodySource for composed.' });
     }),
     normalizeArguments: normalizeNoticeScheduleArguments,
     approvalMessage(input, context) {
@@ -108,9 +122,15 @@ export function createNoticeScheduleTools(
       if (!schoolClass) return notCreated('class_not_found', 'A turma não existe mais.');
       const recipientName = schoolClass.whatsappGroup?.trim();
       if (!recipientName) return notCreated('recipient_not_configured', 'A turma não possui grupo do WhatsApp configurado.');
-      const modelNumber = Number(input.modelNumber);
-      const body = templateBody(schoolClass, modelNumber)?.trim();
-      if (!body) return notCreated('template_not_configured', `O modelo ${modelNumber} está vazio.`);
+      let body: string | undefined;
+      if (input.bodySource === 'composed') {
+        body = String(input.body).trim();
+        if (!body) return notCreated('empty_body', 'A mensagem composta está vazia.');
+      } else {
+        const modelNumber = Number(input.modelNumber);
+        body = templateBody(schoolClass, modelNumber)?.trim();
+        if (!body) return notCreated('template_not_configured', `O modelo ${modelNumber} está vazio.`);
+      }
       if (recipientName !== input.recipientName || body !== input.body) {
         return notCreated('grounding_mismatch', 'Destinatário ou texto não correspondem aos dados atuais da turma.');
       }
@@ -156,11 +176,56 @@ export function createNoticeScheduleTools(
         dueAt: stored.dueAt,
       } as JsonObject;
     },
+  }, {
+    name: 'compose_notice',
+    description: 'Escreve com IA UM texto novo de aviso para uma turma real, a partir do assunto dito pelo usuário — em vez de carregar um modelo fixo. Use quando o usuário pede um aviso “sobre” algo (aula cancelada, mudança de horário, recado) sem citar um número de modelo, ou quando pede para reescrever o rascunho atual em outro estilo. classId deve vir de find_classes; nunca invente o identificador. Retorna um rascunho para revisão; NÃO envia nem agenda. Para agendar/enviar depois, use prepare_notice_schedule com bodySource=composed e o texto retornado.',
+    risk: 'read',
+    inputSchema: z.object({
+      classId: z.string().uuid(),
+      topic: z.string().trim().min(1).max(1000)
+        .describe('O assunto e os fatos do aviso, nas palavras do usuário. Ex.: "amanhã não vai ter aula".'),
+      styleHint: z.string().trim().min(1).max(200).nullable()
+        .describe('Ajuste de estilo opcional pedido pelo usuário, ex.: "mais curto e informal". null quando não houver.'),
+      baseMessage: z.string().trim().min(1).max(4000).nullable()
+        .describe('Rascunho anterior a reescrever quando o usuário pede correção de estilo. null na primeira composição.'),
+    }).strict(),
+    async execute(input, context) {
+      if (!compose) return notComposed('composition_unavailable', 'A composição por IA não está disponível agora; use um modelo fixo.');
+      const classId = String(input.classId);
+      const schoolClass = (await catalog.list(context)).find((item) => item.id === classId);
+      if (!schoolClass) return notComposed('class_not_found', 'A turma não existe mais.');
+      const recipient = schoolClass.whatsappGroup?.trim() || schoolClass.name;
+      let message: string;
+      try {
+        const result = await compose({
+          schoolClass,
+          topic: String(input.topic),
+          styleHint: input.styleHint === null ? null : String(input.styleHint),
+          baseMessage: input.baseMessage === null ? null : String(input.baseMessage),
+        });
+        message = result.message.trim();
+      } catch {
+        return notComposed('composition_failed', 'A IA não conseguiu escrever o aviso agora. Tente de novo ou use um modelo fixo.');
+      }
+      if (!message) return notComposed('empty_composition', 'A composição voltou vazia.');
+      return {
+        composed: true,
+        class: { id: schoolClass.id, name: schoolClass.name },
+        recipient,
+        body: message,
+      } as JsonObject;
+    },
   }];
 }
 
 export function normalizeNoticeScheduleArguments(input: JsonObject): JsonObject {
   const normalized = { ...input };
+  if (!normalized.bodySource) {
+    normalized.bodySource = typeof normalized.modelNumber === 'number' ? 'model' : 'composed';
+  }
+  if (normalized.bodySource === 'composed' && normalized.modelNumber === undefined) {
+    normalized.modelNumber = null;
+  }
   if (!normalized.scheduleKind) {
     if (typeof normalized.localDueAt === 'string') normalized.scheduleKind = 'local_datetime';
     else if (typeof normalized.delayMinutes === 'number') normalized.scheduleKind = 'delay_minutes';
@@ -186,6 +251,10 @@ function templateBody(schoolClass: Awaited<ReturnType<ClassCatalog['list']>>[num
 
 function notCreated(errorCode: string, message: string): never {
   throw new AgentToolExecutionError(errorCode, { created: false, errorCode, message });
+}
+
+function notComposed(errorCode: string, message: string): never {
+  throw new AgentToolExecutionError(errorCode, { composed: false, errorCode, message });
 }
 
 function formatDueAt(value: string, timezone: string) {
