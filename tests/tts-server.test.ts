@@ -46,19 +46,45 @@ test('Google TTS: falha como tts_unconfigured quando falta a chave', async () =>
   );
 });
 
-test('ElevenLabs continua sendo o provider padrão quando TTS_PROVIDER não é google', async () => {
-  const calls: string[] = [];
-  const mockFetch = (async (url: unknown) => {
+function audioFetch(calls: string[]) {
+  return (async (url: unknown) => {
     calls.push(String(url));
     return {
       ok: true,
       headers: { get: (h: string) => (h === 'content-type' ? 'audio/mpeg' : null) },
-      async arrayBuffer() { return Buffer.from('eleven-bytes'); },
+      async arrayBuffer() { return Buffer.from('audio-bytes'); },
     } as unknown as Response;
   }) as unknown as typeof fetch;
+}
 
-  const synth = createTtsService(mockFetch);
+test('gtranslate é o provider padrão (grátis, sem chave) quando TTS_PROVIDER não é definido', async () => {
+  const calls: string[] = [];
+  const synth = createTtsService(audioFetch(calls));
+  // Mesmo com chaves do ElevenLabs presentes, o padrão é a voz gratuita do Google Translate.
   const result = await synth('user-1', 'oi', {
+    ELEVENLABS_API_KEY: 'k',
+    ELEVENLABS_VOICE_ID: 'JBFqnCBsd6RMkjVDRZzb',
+  } as unknown as NodeJS.ProcessEnv);
+
+  assert.equal(result.cached, false);
+  assert.match(calls[0], /translate\.google\.com\/translate_tts/);
+  assert.match(calls[0], /tl=pt-BR/);
+});
+
+test('gtranslate: quebra texto longo em pedaços de até 200 chars e junta os MP3s', async () => {
+  const calls: string[] = [];
+  const synth = createTtsService(audioFetch(calls));
+  const longText = 'palavra '.repeat(60).trim(); // ~479 chars -> múltiplos pedaços
+  await synth('user-1', longText, {} as unknown as NodeJS.ProcessEnv);
+  assert.ok(calls.length >= 2, `esperava múltiplas chamadas, teve ${calls.length}`);
+  assert.ok(calls.every((url) => url.includes('translate_tts')));
+});
+
+test('ElevenLabs é usado quando TTS_PROVIDER=elevenlabs', async () => {
+  const calls: string[] = [];
+  const synth = createTtsService(audioFetch(calls));
+  const result = await synth('user-1', 'oi', {
+    TTS_PROVIDER: 'elevenlabs',
     ELEVENLABS_API_KEY: 'k',
     ELEVENLABS_VOICE_ID: 'JBFqnCBsd6RMkjVDRZzb',
   } as unknown as NodeJS.ProcessEnv);
