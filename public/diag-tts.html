@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Diagnóstico de voz — Minha Agenda</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 16px; background:#0b1220; color:#e5e7eb; line-height:1.4; }
+  h1 { font-size: 18px; }
+  button { padding:14px 18px; border-radius:10px; border:0; background:#2563eb; color:#fff; font-size:17px; width:100%; margin:8px 0; }
+  button.alt { background:#334155; }
+  pre { white-space:pre-wrap; word-break:break-word; background:#0f1b3a; border:1px solid #1f2a44; border-radius:8px; padding:10px; font-size:13px; }
+  .ok { color:#34d399; } .bad { color:#f87171; } .warn { color:#fbbf24; }
+</style>
+</head>
+<body>
+  <h1>Diagnóstico de voz</h1>
+  <p>Faça <b>login no app primeiro</b> (minha-agenda1.vercel.app), depois volte aqui e toque no botão.</p>
+  <button onclick="run()">▶️ Testar voz agora</button>
+  <button class="alt" onclick="playSilent()">Só testar se o áudio toca (sem servidor)</button>
+  <pre id="log">Toque no botão acima…</pre>
+<script>
+// MP3 silencioso válido (~0,4s) — mesmo usado no app para destravar o áudio no mobile.
+const SILENT_MP3 = 'data:audio/mpeg;base64,SUQzBAAAAAAAIlRTU0UAAAAOAAADTGF2ZjYzLjEuMTAxAAAAAAAAAAAAAAD/+0DAAAAAAAAAAAAAAAAAAAAAAABJbmZvAAAADwAAABEAAAeeACUlJSUlMzMzMzMzQEBAQEBATk5OTk5OXFxcXFxcaWlpaWlpd3d3d3d3hYWFhYWFkpKSkpKgoKCgoKCurq6urq67u7u7u7vJycnJycnX19fX19fk5OTk5OTy8vLy8vL//////wAAAABMYXZjNjMuMS4AAAAAAAAAAAAAAAAkBVgAAAAAAAAHnhDRAIgAAAAAAP/7EMQAA8AAAaQAAAAgAAA0gAAABExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy4xMDBVVVVV//sQxCmDwAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVX/+xDEUwPAAAGkAAAAIAAANIAAAARVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuMTAwVVVVVf/7EMR8g8AAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy4xMDBVVVVV//sQxKYDwAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVX/+xDEz4PAAAGkAAAAIAAANIAAAARVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuMTAwVVVVVf/7EMTWA8AAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy4xMDBVVVVV//sQxNYDwAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVX/+xDE1gPAAAGkAAAAIAAANIAAAARVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVTEFNRTMuMTAwVVVVVf/7EMTWA8AAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVMQU1FMy4xMDBVVVVV//sQxNYDwAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUxBTUUzLjEwMFVVVVX/+xDE1gPAAAGkAAAAIAAANIAAAARVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/7EMTWA8AAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//sQxNYDwAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVX/+xDE1gPAAAGkAAAAIAAANIAAAARVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVf/7EMTWA8AAAaQAAAAgAAA0gAAABFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV//sQxNYDwAABpAAAACAAADSAAAAEVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVU=';
+
+const el = document.getElementById('log');
+let lines = [];
+function log(msg, cls) { lines.push(cls ? '<span class="'+cls+'">'+msg+'</span>' : msg); el.innerHTML = lines.join('\n'); }
+function reset() { lines = []; el.innerHTML = ''; }
+
+const audio = new Audio();
+audio.preload = 'auto';
+
+async function playSilent() {
+  reset();
+  log('Dispositivo: ' + navigator.userAgent, 'warn');
+  log('--- Teste 1: o áudio consegue tocar após o toque? ---');
+  try {
+    audio.src = SILENT_MP3;
+    const p = audio.play();
+    if (p && p.then) { await p; log('✓ play() do clipe silencioso FUNCIONOU (áudio liberado).', 'ok'); audio.pause(); }
+    else { log('✓ play() retornou sem promise (ok em navegadores antigos).', 'ok'); }
+  } catch (e) {
+    log('✗ play() BLOQUEADO: ' + e.name + ' — ' + e.message, 'bad');
+    log('→ Significa que o navegador está bloqueando autoplay mesmo no toque.', 'bad');
+  }
+}
+
+async function run() {
+  reset();
+  log('Dispositivo: ' + navigator.userAgent, 'warn');
+
+  // Passo 1: destravar o áudio dentro do gesto
+  log('\n--- Passo 1: liberar áudio (dentro do seu toque) ---');
+  let unlocked = false;
+  try {
+    audio.src = SILENT_MP3;
+    const p = audio.play();
+    if (p && p.then) { await p; audio.pause(); }
+    unlocked = true;
+    log('✓ áudio liberado pelo toque.', 'ok');
+  } catch (e) {
+    log('✗ não liberou: ' + e.name + ' — ' + e.message, 'bad');
+  }
+
+  // Passo 2: pedir a voz ao servidor
+  log('\n--- Passo 2: pedir a voz ao servidor (/api/tts) ---');
+  let blob = null;
+  try {
+    const resp = await fetch('/api/tts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'Teste de voz, um, dois, três.' }),
+    });
+    log('status HTTP: ' + resp.status + (resp.ok ? ' (ok)' : ' (ERRO)'), resp.ok ? 'ok' : 'bad');
+    log('content-type: ' + resp.headers.get('content-type'));
+    log('x-tts-voice: ' + resp.headers.get('x-tts-voice'));
+    log('x-tts-cache: ' + resp.headers.get('x-tts-cache'));
+    if (resp.status === 401) { log('→ Você NÃO está logado. Abra o app, faça login e volte aqui.', 'bad'); return; }
+    if (resp.status === 503) { log('→ Servidor não conseguiu gerar a voz (provedor/chave). O problema é no SERVIDOR, não no celular.', 'bad'); try { log(JSON.stringify(await resp.json())); } catch(_){} return; }
+    if (!resp.ok) { log('→ Erro inesperado do servidor.', 'bad'); try { log(await resp.text()); } catch(_){} return; }
+    const ct = resp.headers.get('content-type') || '';
+    if (!ct.startsWith('audio/')) { log('→ Servidor não devolveu áudio.', 'bad'); return; }
+    blob = await resp.blob();
+    log('✓ áudio recebido: ' + blob.size + ' bytes, tipo ' + blob.type, 'ok');
+  } catch (e) {
+    log('✗ falha na rede ao chamar /api/tts: ' + e.name + ' — ' + e.message, 'bad');
+    return;
+  }
+
+  // Passo 3: tocar a voz recebida
+  log('\n--- Passo 3: tocar a voz recebida ---');
+  try {
+    const url = URL.createObjectURL(blob);
+    audio.src = url;
+    const p = audio.play();
+    if (p && p.then) await p;
+    log('✓ TOCOU! Se você ouviu a voz boa, está tudo certo.', 'ok');
+    log('Se o áudio recebeu bytes mas você NÃO ouviu nada, o problema é volume/modo silencioso do aparelho.', 'warn');
+  } catch (e) {
+    log('✗ play() da voz BLOQUEADO: ' + e.name + ' — ' + e.message, 'bad');
+    log('→ A voz chegou do servidor, mas o navegador bloqueou a reprodução. (autoplay)', 'bad');
+    log('liberado no passo 1? ' + unlocked, unlocked ? 'warn' : 'bad');
+  }
+}
+</script>
+</body>
+</html>
