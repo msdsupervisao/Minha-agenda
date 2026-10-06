@@ -114,3 +114,61 @@ A parte que dava pra fazer sozinho (sem-auth) **já estava feita pelo próprio O
 de baixa qualidade. O ganho real do "usar o máximo do OmniRoute" depende de cadastrar os
 provedores grátis bons (com seu login) e apontar o app para um combo validado — tarefas para
 fazermos juntos, não no escuro.
+
+## 8. Plano por projeto (detalhado)
+
+Padrão único para todos: **trocar a chamada direta à OpenAI pelo gateway OmniRoute**
+(que é compatível com OpenAI) → modelos grátis + fallback + sem depender de cota da OpenAI.
+Só muda 3 coisas: `base_url`, `api_key`, `model`.
+
+### 8.1 ProfessorIA-Central  ⭐ (prioridade — promissor e já local)
+
+**O que é:** central Flask (`F:\PROJETOS\ProfessorIA-Central`) para rotinas escolares.
+Dois caminhos de IA hoje:
+1. **Extensão Chrome que reusa o ChatGPT logado** (grátis, sem chave) — engenhoso.
+2. **OpenAI direta** em `app.py` → função `openai_response()` (linha ~136): usa a
+   **Responses API** (`https://api.openai.com/v1/responses`), modelo `gpt-5-mini`,
+   com `previous_response_id` para encadear a conversa. **Exige `OPENAI_API_KEY` e quebra
+   quando a cota zera** — mesmo problema que a Minha-agenda teve.
+
+**Encaixe com OmniRoute:** redirecionar a função `openai_response()` para o gateway.
+
+- **Opção A (recomendada, robusta) — chat completions + histórico local**
+  - Criar `gateway_response(instructions, messages)` que chama
+    `POST {OMNIROUTE_BASE_URL}/v1/chat/completions` com `messages = [{role:'system', instructions}, ...histórico do SQLite]`.
+    O app já guarda conversas/mensagens no `professoria.db`, então o fio vem do banco
+    (em vez do `previous_response_id` da OpenAI).
+  - Envs: `OMNIROUTE_BASE_URL=https://omniroute-msd-avodap-2026.fly.dev/v1`,
+    `OMNIROUTE_API_KEY=<chave>`, `OMNIROUTE_MODEL=gemini/gemini-3.1-flash-lite`
+    (ou `auto/best-free` após validar). Manter OpenAI como fallback opcional.
+- **Opção B (mínima, rápida de testar) — manter a Responses API**
+  - O OmniRoute traduz Responses API (`open-sse/translator/.../openai-responses`,
+    `responsesStatePolicy.ts`). Então talvez baste trocar `base_url`+`api_key`+`model` e
+    manter o shape atual. **Risco:** `store`/`previous_response_id` (estado no servidor)
+    pode não persistir igual à OpenAI. Testar o encadeamento antes de confiar.
+- **Sinergia extra:** o modo "extensão ChatGPT" do ProfessorIA-Central faz o mesmo que o
+  **browser-backed ChatGPT do OmniRoute** (`open-sse/services/browserBackedChat.ts` +
+  adaptador `chatgpt-web`). No futuro dá pra aposentar a extensão própria e usar o ChatGPT
+  grátis **através do gateway**, unificando tudo num endpoint só.
+
+**Ganho:** rotinas de IA deixam de depender de cota paga; ficam grátis com fallback.
+**Esforço:** baixo (uma função + 3 envs). **Risco:** baixo (OpenAI continua como fallback).
+
+### 8.2 ProfessorIA-App / ProfessorIA-Web
+
+- Hoje: OpenAI + Whisper **diretos** (transcrição + resumo + quiz), pago, 1 provedor.
+- Plano: resumo/quiz pelo gateway (modelos grátis + fallback). Transcrição: avaliar o
+  **Speech→Text** do gateway (categoria `0/12` hoje) em vez do Whisper pago.
+- **Maior economia de custo do portfólio** (é o que mais gasta API).
+
+### 8.3 Volt Fitness
+- IA ainda é planejada. Nascer já no gateway (grátis-first + fallback), sem chave OpenAI direta.
+
+### 8.4 Tom Certo
+- Pouca/nenhuma IA (áudio é local). Se entrar algum recurso de IA, mesmo padrão de gateway.
+
+### 8.5 Ordem sugerida
+1. **ProfessorIA-Central** (Opção A) — rápido, alto valor, já local.
+2. **ProfessorIA-App/Web** — maior economia.
+3. Minha-agenda: ligar combo validado (Fase 3 da seção 5).
+4. Volt / novos: gateway desde o início.
