@@ -87,5 +87,30 @@ um provedor de TTS grátis for cadastrado.
   pode quebrar como na Etapa 4).
 - O gateway reinicia a cada ~9 min (exit 143) — investigar à parte (não bloqueia este plano).
 
-## 7. Status do cadastro automático (preenchido pelo Claude durante a noite)
-_(Ver seção atualizada ao final da execução.)_
+## 7. Status do cadastro automático (execução da noite de 2026-10-06)
+
+Investigado ao vivo no dashboard. Descobertas que mudam o plano de cadastro:
+
+- **Os provedores "Sem Auth" (13) já vêm "Ativado" por padrão.** O contador `2/347`
+  conta apenas **conexões com credencial** (Gemini + Groq). Os sem-auth já estão no pool
+  sem cadastro — ou seja, não há o que "registrar" neles.
+- **Mas eles são instáveis.** Teste ao vivo: no `Cloudflare AI Playground` (20 modelos,
+  já Ativado) o modelo `cfp/zai-org/glm-5.2` **falhou no teste** (erro vermelho). Endpoints
+  grátis abertos (AI Horde, DuckDuckGo AI Chat, Cloudflare Playground…) oscilam e **não são
+  confiáveis** para rotear um assistente de produção às cegas.
+- **Decisão:** NÃO encher a produção com os 13 sem-auth no escuro. Baixo valor + risco de
+  degradar o `auto/*` depois. Eles continuam disponíveis caso um combo específico queira usá-los.
+
+### O que realmente falta (precisa do Fernando)
+- **Cadastrar provedores grátis BONS** que exigem login/chave (uma vez):
+  - OAuth (0/20): **Kimi Code**, Antigravity, Amazon Q — login do Fernando; token renova sozinho.
+  - Chave de API grátis (ex.: **Cerebras**, OpenRouter free) — chave do Fernando.
+- **Validar tool-calling** nos candidatos (Playground do dashboard ou script) antes de ligar.
+- **Trocar `OMNIROUTE_MODEL`** para um combo validado (`auto/best-free` ou combo próprio
+  `cost-optimized` com fallback), medindo latência/qualidade.
+
+### Resumo honesto
+A parte que dava pra fazer sozinho (sem-auth) **já estava feita pelo próprio OmniRoute** e é
+de baixa qualidade. O ganho real do "usar o máximo do OmniRoute" depende de cadastrar os
+provedores grátis bons (com seu login) e apontar o app para um combo validado — tarefas para
+fazermos juntos, não no escuro.
