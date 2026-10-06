@@ -1,18 +1,26 @@
 import { createHash } from 'node:crypto';
 import { stripMarkdownForSpeech } from '../assistant/speech';
 
-// Three TTS providers, chosen by TTS_PROVIDER ('gtranslate' default | 'google' | 'elevenlabs'):
-// - gtranslate: Google Translate's public TTS. No key, no billing, free. Decent pt-BR voice,
-//   but ~200 chars per request, so we chunk and concatenate the MP3 parts.
-// - google: Google Cloud Text-to-Speech, native neural pt-BR voices (needs billing + key).
-// - elevenlabs: ElevenLabs multilingual v2 (needs a paid-tier key + voice id).
+// TTS providers, chosen by TTS_PROVIDER ('edge' default | 'gtranslate' | 'google' | 'elevenlabs'):
+// - edge: Microsoft Edge's online neural voices via the maintained edge-tts-universal library.
+//   Free, no key, no account; high-quality pt-BR (EDGE_TTS_VOICE, default pt-BR-AntonioNeural).
+//   Unofficial endpoint, so on failure we fall back to gtranslate so the voice never disappears.
+// - gtranslate: Google Translate's public TTS. Free/no key, decent but basic; ~200 chars/request
+//   so we chunk and concatenate the MP3 parts. Used as the fallback for edge.
+// - google: Google Cloud Text-to-Speech, neural pt-BR (needs billing + GOOGLE_TTS_API_KEY).
+// - elevenlabs: ElevenLabs multilingual v2 (needs a paid-tier key + ELEVENLABS_VOICE_ID).
 const ELEVEN_MODEL_ID = 'eleven_multilingual_v2';
 const ELEVEN_OUTPUT_FORMAT = 'mp3_44100_128';
 const GOOGLE_DEFAULT_VOICE = 'pt-BR-Neural2-B';
 const GOOGLE_DEFAULT_LANGUAGE = 'pt-BR';
+const EDGE_DEFAULT_VOICE = 'pt-BR-AntonioNeural';
 const GTRANSLATE_LANG = 'pt-BR';
 const GTRANSLATE_MAX_CHARS = 200;
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+export function resolveProvider(env: NodeJS.ProcessEnv): string {
+  return (env.TTS_PROVIDER || 'edge').trim().toLowerCase();
+}
 
 export function createTtsService(request: typeof fetch = fetch) {
   const cache = new Map<string, { audio: Uint8Array; expires: number }>();
@@ -20,7 +28,7 @@ export function createTtsService(request: typeof fetch = fetch) {
   return async (userId: string, raw: string, env: NodeJS.ProcessEnv = process.env) => {
     const text = stripMarkdownForSpeech(raw).slice(0, 800).trim();
     if (!text) throw new Error('tts_empty');
-    const provider = (env.TTS_PROVIDER || 'gtranslate').trim().toLowerCase();
+    const provider = resolveProvider(env);
     // Resolve a per-provider "voice" label used only to scope the cache; providers that need a
     // key validate it here so a missing config surfaces as tts_unconfigured.
     let voice: string;
@@ -30,6 +38,8 @@ export function createTtsService(request: typeof fetch = fetch) {
     } else if (provider === 'elevenlabs') {
       if (!env.ELEVENLABS_API_KEY || !env.ELEVENLABS_VOICE_ID) throw new Error('tts_unconfigured');
       voice = env.ELEVENLABS_VOICE_ID;
+    } else if (provider === 'edge') {
+      voice = env.EDGE_TTS_VOICE?.trim() || EDGE_DEFAULT_VOICE;
     } else {
       voice = GTRANSLATE_LANG;
     }
@@ -43,11 +53,15 @@ export function createTtsService(request: typeof fetch = fetch) {
     if (inflight) return { audio: await inflight, cached: true };
     if (pending.size >= 4) throw new Error('tts_busy');
     const job = (async () => {
-      const audio = provider === 'google'
-        ? await synthesizeGoogle(request, env.GOOGLE_TTS_API_KEY!, voice, text)
-        : provider === 'elevenlabs'
-          ? await synthesizeElevenLabs(request, env.ELEVENLABS_API_KEY!, voice, text)
-          : await synthesizeGoogleTranslate(request, text);
+      let audio: Uint8Array;
+      if (provider === 'google') audio = await synthesizeGoogle(request, env.GOOGLE_TTS_API_KEY!, voice, text);
+      else if (provider === 'elevenlabs') audio = await synthesizeElevenLabs(request, env.ELEVENLABS_API_KEY!, voice, text);
+      else if (provider === 'edge') {
+        // Edge is unofficial; if Microsoft blocks it (e.g. a DRM 403), fall back to the
+        // always-available free Google Translate voice so the user still hears something.
+        try { audio = await synthesizeEdge(voice, text); }
+        catch { audio = await synthesizeGoogleTranslate(request, text); }
+      } else audio = await synthesizeGoogleTranslate(request, text);
       if (!audio.length || audio.length > 2_000_000) throw new Error('tts_invalid_audio');
       // At most 32 small audio clips per warm server instance, scoped by user.
       if (cache.size >= 32) cache.delete(cache.keys().next().value!);
@@ -58,6 +72,27 @@ export function createTtsService(request: typeof fetch = fetch) {
     try { return { audio: await job, cached: false }; }
     finally { pending.delete(key); }
   };
+}
+
+// Microsoft Edge neural voices via the maintained edge-tts-universal library (handles the
+// Sec-MS-GEC anti-abuse token). Dynamic import so it only loads when this provider is used.
+async function synthesizeEdge(voice: string, text: string): Promise<Uint8Array> {
+  const { Communicate } = await import('edge-tts-universal');
+  const communicate = new Communicate(text, { voice });
+  const collect = (async () => {
+    const parts: Uint8Array[] = [];
+    for await (const chunk of communicate.stream()) {
+      if (chunk.type === 'audio' && chunk.data) parts.push(chunk.data);
+    }
+    const length = parts.reduce((sum, part) => sum + part.length, 0);
+    if (!length) throw new Error('tts_unavailable');
+    const audio = new Uint8Array(length);
+    let offset = 0;
+    for (const part of parts) { audio.set(part, offset); offset += part.length; }
+    return audio;
+  })();
+  const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('tts_timeout')), 25000));
+  return Promise.race([collect, timeout]);
 }
 
 async function synthesizeElevenLabs(request: typeof fetch, apiKey: string, voice: string, text: string): Promise<Uint8Array> {

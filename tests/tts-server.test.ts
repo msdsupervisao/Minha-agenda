@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createTtsService } from '../lib/tts/server';
+import { createTtsService, resolveProvider } from '../lib/tts/server';
 
 function jsonResponse(body: unknown, init: { ok?: boolean } = {}) {
   return {
@@ -57,15 +57,16 @@ function audioFetch(calls: string[]) {
   }) as unknown as typeof fetch;
 }
 
-test('gtranslate é o provider padrão (grátis, sem chave) quando TTS_PROVIDER não é definido', async () => {
+test('provider padrão é edge (Microsoft neural grátis); TTS_PROVIDER sobrescreve', () => {
+  assert.equal(resolveProvider({} as NodeJS.ProcessEnv), 'edge');
+  assert.equal(resolveProvider({ TTS_PROVIDER: 'gtranslate' } as unknown as NodeJS.ProcessEnv), 'gtranslate');
+  assert.equal(resolveProvider({ TTS_PROVIDER: ' Google ' } as unknown as NodeJS.ProcessEnv), 'google');
+});
+
+test('gtranslate: chama o endpoint público do Google Translate quando selecionado', async () => {
   const calls: string[] = [];
   const synth = createTtsService(audioFetch(calls));
-  // Mesmo com chaves do ElevenLabs presentes, o padrão é a voz gratuita do Google Translate.
-  const result = await synth('user-1', 'oi', {
-    ELEVENLABS_API_KEY: 'k',
-    ELEVENLABS_VOICE_ID: 'JBFqnCBsd6RMkjVDRZzb',
-  } as unknown as NodeJS.ProcessEnv);
-
+  const result = await synth('user-1', 'oi', { TTS_PROVIDER: 'gtranslate' } as unknown as NodeJS.ProcessEnv);
   assert.equal(result.cached, false);
   assert.match(calls[0], /translate\.google\.com\/translate_tts/);
   assert.match(calls[0], /tl=pt-BR/);
@@ -75,7 +76,7 @@ test('gtranslate: quebra texto longo em pedaços de até 200 chars e junta os MP
   const calls: string[] = [];
   const synth = createTtsService(audioFetch(calls));
   const longText = 'palavra '.repeat(60).trim(); // ~479 chars -> múltiplos pedaços
-  await synth('user-1', longText, {} as unknown as NodeJS.ProcessEnv);
+  await synth('user-1', longText, { TTS_PROVIDER: 'gtranslate' } as unknown as NodeJS.ProcessEnv);
   assert.ok(calls.length >= 2, `esperava múltiplas chamadas, teve ${calls.length}`);
   assert.ok(calls.every((url) => url.includes('translate_tts')));
 });
