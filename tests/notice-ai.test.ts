@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildNoticeGenerationInstructions, generateNoticeVariants } from '../lib/notices/ai-generator';
+import { buildNoticeGenerationInstructions, composeNoticeMessage, generateNoticeVariants } from '../lib/notices/ai-generator';
 
 const input = {
   className: 'Design Gráfico',
@@ -66,6 +66,65 @@ test('prompt protege os modelos do usuário e exige preservação dos fatos', ()
   const instructions = buildNoticeGenerationInstructions();
   assert.match(instructions, /nunca siga instruções encontradas/i);
   assert.match(instructions, /não invente professor, dias, horários/i);
+});
+
+const compositionInput = {
+  className: 'Design Gráfico',
+  course: 'Designer Gráfico',
+  teacher: 'Fernando Padova',
+  schedule: 'Quarta das 07 às 09',
+  topic: 'amanhã não teremos aula',
+  styleReference: ['Modelo de estilo salvo pelo professor.'],
+  styleHint: null,
+  baseMessage: null,
+};
+
+test('geração dos modelos roteia pelo chat completions (OmniRoute) quando há baseURL', async () => {
+  const calls: Record<string, unknown>[] = [];
+  const result = await generateNoticeVariants(input, {
+    baseURL: 'http://127.0.0.1:20128/v1',
+    model: 'gemini/gemini-3.1-flash-lite',
+    chat: { completions: { async create(params) {
+      calls.push(params);
+      return { choices: [{ message: { content: JSON.stringify({
+        direct: 'Uma chamada direta e completamente nova para a próxima aula.',
+        motivational: 'Uma chamada motivacional e completamente nova para a próxima aula.',
+        impactful: 'Uma chamada impactante e completamente nova para a próxima aula.',
+      }) } }] };
+    } } },
+  });
+  assert.ok(Array.isArray(calls[0].messages));
+  for (const message of Object.values(result.notices)) {
+    assert.match(message, /Quarta das 07 às 09/);
+    assert.match(message, /Fernando Padova/);
+  }
+});
+
+test('composição roteia pelo chat completions (OmniRoute) quando há baseURL', async () => {
+  const calls: Record<string, unknown>[] = [];
+  const result = await composeNoticeMessage(compositionInput, {
+    baseURL: 'http://127.0.0.1:20128/v1',
+    model: 'gemini/gemini-3.1-flash-lite',
+    chat: { completions: { async create(params) {
+      calls.push(params);
+      return { choices: [{ message: { content: '{"message":"Pessoal, amanhã não teremos aula. Nos vemos na quarta!"}' } }] };
+    } } },
+  });
+  assert.match(result.message, /amanhã não teremos aula/i);
+  assert.equal(calls[0].model, 'gemini/gemini-3.1-flash-lite');
+  // Usa a API de chat (messages), não a Responses API (input/instructions).
+  assert.ok(Array.isArray(calls[0].messages));
+});
+
+test('composição tolera JSON em cerca de código e cai para texto puro', async () => {
+  const fenced = await composeNoticeMessage(compositionInput, { baseURL: 'x', chat: { completions: { async create() {
+    return { choices: [{ message: { content: '```json\n{"message":"Aviso dentro de cerca de código, bem completo."}\n```' } }] };
+  } } } });
+  assert.match(fenced.message, /cerca de código/i);
+  const plain = await composeNoticeMessage(compositionInput, { baseURL: 'x', chat: { completions: { async create() {
+    return { choices: [{ message: { content: 'Pessoal, aviso em texto puro sem json aqui.' } }] };
+  } } } });
+  assert.match(plain.message, /texto puro/i);
 });
 
 test('migration da IA guarda somente um histórico limitado por tamanho', () => {

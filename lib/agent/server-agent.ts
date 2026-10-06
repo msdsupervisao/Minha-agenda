@@ -58,7 +58,10 @@ export async function runAgentPilot(
   const conversation = options.conversation || loadedContext?.conversation || [];
   const contextState = options.contextState || loadedContext?.state || emptyAgentContextState();
   const scheduleStore = options.scheduleStore || createSupabaseScheduleHandoffStore(client);
-  const compose = config.activeProvider === 'openai' && config.apiKey
+  // Compose notices through whichever AI backend is active (OpenAI direct OR the free
+  // OmniRoute gateway). Passing baseUrl makes the generator use chat completions on the
+  // gateway instead of OpenAI's Responses API, so the notice works on the free setup too.
+  const compose = config.activeProvider !== 'local' && config.apiKey
     ? async (args: {
         schoolClass: import('@/lib/assistant/types').SchoolClass;
         topic: string;
@@ -80,6 +83,7 @@ export async function runAgentPilot(
           baseMessage: args.baseMessage,
         }, {
           apiKey: config.apiKey!,
+          baseURL: config.baseUrl,
           model: config.model,
           timeoutMs: Math.max(config.timeoutMs, 15000),
         });

@@ -25,7 +25,7 @@ export async function POST(request: Request) {
   if (!parsed.success) return NextResponse.json({ error: 'Turma inválida.' }, { status: 400 });
 
   const config = getAiRuntimeConfig();
-  if (config.activeProvider !== 'openai' || !config.apiKey) {
+  if (config.activeProvider === 'local' || !config.apiKey) {
     return NextResponse.json({ error: 'A geração por IA não está configurada.' }, { status: 503 });
   }
 
@@ -56,6 +56,7 @@ export async function POST(request: Request) {
       history,
     }, {
       apiKey: config.apiKey,
+      baseURL: config.baseUrl,
       model: config.model,
       timeoutMs: Math.max(config.timeoutMs, 15000),
     });

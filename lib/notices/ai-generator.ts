@@ -26,11 +26,18 @@ type ParseResponse = {
   usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number } | null;
 };
 type ResponsesClient = { parse(params: Record<string, unknown>): Promise<ParseResponse> };
+type ChatCompletion = {
+  choices?: Array<{ message?: { content?: string | null } }>;
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
+};
+type ChatClient = { completions: { create(params: Record<string, unknown>): Promise<ChatCompletion> } };
 
 export async function generateNoticeVariants(
   input: NoticeGenerationInput,
-  options: { apiKey?: string; model?: string; timeoutMs?: number; responses?: ResponsesClient } = {},
+  options: { apiKey?: string; baseURL?: string | null; model?: string; timeoutMs?: number; responses?: ResponsesClient; chat?: ChatClient } = {},
 ) {
+  // Gateways (OmniRoute) speak chat completions, not the Responses API; route accordingly.
+  if (options.baseURL?.trim() || options.chat) return generateViaChat(input, options);
   const client = options.responses
     ? null
     : new OpenAI({ apiKey: options.apiKey, timeout: options.timeoutMs ?? 15000, maxRetries: 1 });
@@ -51,6 +58,36 @@ export async function generateNoticeVariants(
     usage: {
       inputTokens: response.usage?.input_tokens || 0,
       outputTokens: response.usage?.output_tokens || 0,
+      totalTokens: response.usage?.total_tokens || 0,
+    },
+  };
+}
+
+async function generateViaChat(
+  input: NoticeGenerationInput,
+  options: { apiKey?: string; baseURL?: string | null; model?: string; timeoutMs?: number; chat?: ChatClient },
+) {
+  const client = options.chat
+    ? null
+    : new OpenAI({ apiKey: options.apiKey, baseURL: options.baseURL?.trim() || undefined, timeout: options.timeoutMs ?? 15000, maxRetries: 1 });
+  const chat = options.chat || (client!.chat as unknown as ChatClient);
+  const response = await chat.completions.create({
+    model: options.model || 'gpt-5.4-mini',
+    temperature: 0.8,
+    max_tokens: 1800,
+    response_format: { type: 'json_object' },
+    messages: [
+      { role: 'system', content: `${buildNoticeGenerationInstructions()}\nResponda SOMENTE em JSON: {"direct":"<texto>","motivational":"<texto>","impactful":"<texto>"}.` },
+      { role: 'user', content: JSON.stringify(promptData(input)) },
+    ],
+  });
+  const parsed = GeneratedNoticesSchema.safeParse(parseJsonLoose(response.choices?.[0]?.message?.content || ''));
+  if (!parsed.success) throw new Error('invalid_notice_output');
+  return {
+    notices: ensureClassFacts(parsed.data, input),
+    usage: {
+      inputTokens: response.usage?.prompt_tokens || 0,
+      outputTokens: response.usage?.completion_tokens || 0,
       totalTokens: response.usage?.total_tokens || 0,
     },
   };
@@ -123,8 +160,12 @@ export type NoticeCompositionInput = {
 
 export async function composeNoticeMessage(
   input: NoticeCompositionInput,
-  options: { apiKey?: string; model?: string; timeoutMs?: number; responses?: ResponsesClient } = {},
+  options: { apiKey?: string; baseURL?: string | null; model?: string; timeoutMs?: number; responses?: ResponsesClient; chat?: ChatClient } = {},
 ) {
+  // The OmniRoute gateway (and other OpenAI-compatible gateways) speak chat completions, not
+  // the Responses API — so when a baseURL is set we compose via chat completions and parse the
+  // JSON ourselves. Direct OpenAI keeps the Responses API with native structured output.
+  if (options.baseURL?.trim() || options.chat) return composeViaChat(input, options);
   const client = options.responses
     ? null
     : new OpenAI({ apiKey: options.apiKey, timeout: options.timeoutMs ?? 15000, maxRetries: 1 });
@@ -148,6 +189,62 @@ export async function composeNoticeMessage(
       totalTokens: response.usage?.total_tokens || 0,
     },
   };
+}
+
+async function composeViaChat(
+  input: NoticeCompositionInput,
+  options: { apiKey?: string; baseURL?: string | null; model?: string; timeoutMs?: number; chat?: ChatClient },
+) {
+  const client = options.chat
+    ? null
+    : new OpenAI({ apiKey: options.apiKey, baseURL: options.baseURL?.trim() || undefined, timeout: options.timeoutMs ?? 15000, maxRetries: 1 });
+  const chat = options.chat || (client!.chat as unknown as ChatClient);
+  const response = await chat.completions.create({
+    model: options.model || 'gpt-5.4-mini',
+    temperature: 0.7,
+    max_tokens: 1200,
+    response_format: { type: 'json_object' },
+    messages: [
+      { role: 'system', content: `${buildNoticeCompositionInstructions()}\nResponda SOMENTE em JSON no formato {"message":"<o aviso completo>"}.` },
+      { role: 'user', content: JSON.stringify(compositionPromptData(input)) },
+    ],
+  });
+  const content = response.choices?.[0]?.message?.content || '';
+  const parsed = ComposedNoticeSchema.safeParse({ message: extractMessage(content) });
+  if (!parsed.success) throw new Error('invalid_notice_output');
+  return {
+    message: parsed.data.message.trim(),
+    usage: {
+      inputTokens: response.usage?.prompt_tokens || 0,
+      outputTokens: response.usage?.completion_tokens || 0,
+      totalTokens: response.usage?.total_tokens || 0,
+    },
+  };
+}
+
+function stripFences(content: string): string {
+  return content.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+}
+
+// Models on the gateway don't always honor response_format strictly, so accept clean JSON or
+// JSON wrapped in ```code fences``` or a bare {...} block embedded in prose.
+function parseJsonLoose(content: string): unknown {
+  const text = stripFences(content);
+  const candidates = [text];
+  const brace = text.match(/\{[\s\S]*\}/);
+  if (brace) candidates.push(brace[0]);
+  for (const candidate of candidates) {
+    try { return JSON.parse(candidate); } catch { /* try the next candidate */ }
+  }
+  return null;
+}
+
+// Single-message composition: prefer the JSON "message" field; last resort is the plain text
+// (a model that ignored JSON and just wrote the notice).
+function extractMessage(content: string): string {
+  const parsed = parseJsonLoose(content) as { message?: unknown } | null;
+  if (parsed && typeof parsed.message === 'string' && parsed.message.trim()) return parsed.message.trim();
+  return stripFences(content);
 }
 
 export function buildNoticeCompositionInstructions() {
