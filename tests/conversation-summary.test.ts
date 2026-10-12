@@ -38,6 +38,17 @@ function storage(count: number, textLength = 10) {
 const input = { userText: 'Nova pergunta', result: { reply: 'Nova resposta', toolResults: [] } };
 const retired = [{ role: 'user' as const, content: 'Fato antigo' }];
 
+test('resposta longa não elimina o pedido que define o contexto do próximo turno', () => {
+  const source = 'Vamos trabalhar com Kids Tecnologia, turma das 14h, sobre segurança na internet.';
+  const context = parseStoredAgentContext({ recent_turns: [
+    { role: 'user', text: source },
+    { role: 'assistant', text: 'Material da aula. '.repeat(850) },
+  ] });
+  assert.equal(context.conversation[0]?.content, source);
+  assert.deepEqual(context.conversation.map(message => message.role), ['user', 'assistant']);
+  assert.ok(context.conversation[1].content.length < 12000);
+});
+
 test('persistência retorna aposentadas sem resumir e retém 50 falas acima do orçamento', async () => {
   const db = storage(50, 1000);
   const original = db.read();

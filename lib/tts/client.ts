@@ -35,7 +35,7 @@ export function createSpeechPlayer(fallback: (text: string) => void) {
     audio.src = SILENT_MP3;
     const started = audio.play();
     if (started && typeof started.then === 'function') {
-      started.then(() => { unlocked = true; audio.pause(); }).catch(() => {});
+      started.then(() => { unlocked = true; if (audio.src === SILENT_MP3) audio.pause(); }).catch(() => {});
     } else {
       unlocked = true;
     }
@@ -47,7 +47,7 @@ export function createSpeechPlayer(fallback: (text: string) => void) {
     const current = generation;
     controller = new AbortController();
     const currentController = controller;
-    const timeout = window.setTimeout(() => currentController.abort(), 27000);
+    const timeout = window.setTimeout(() => currentController.abort(), 7000);
     try {
       const response = await fetch('/api/tts', { method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text: text.slice(0, 800) }), signal: controller.signal });

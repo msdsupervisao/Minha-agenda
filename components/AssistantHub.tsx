@@ -115,8 +115,8 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
   async function processCommand(command: string, source: 'voice' | 'text') {
     const clean = command.trim();
     if (!clean || state === 'processing' || state === 'action' || agentApprovalId) return;
-    primeSpeech();
     speechPlayer.current?.cancel();
+    primeSpeech();
     voiceSession.current?.cancel();
     voiceSession.current = null;
     if (timer.current) window.clearTimeout(timer.current);

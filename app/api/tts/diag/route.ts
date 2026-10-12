@@ -1,5 +1,5 @@
 import { getAuthenticatedUser } from '@/lib/supabase/auth';
-import { synthesizeSpeech } from '@/lib/tts/server';
+import { resolveProvider, synthesizeSpeech } from '@/lib/tts/server';
 
 // TEMPORARY diagnostic: reports which TTS provider is selected, which env vars are present
 // (booleans only — never their values), the real synthesis error the public route masks,
@@ -49,25 +49,26 @@ export async function GET() {
   const user = await getAuthenticatedUser();
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
   const env = process.env;
-  const provider = (env.TTS_PROVIDER || 'elevenlabs').trim().toLowerCase();
+  const provider = resolveProvider(env);
   const presence = {
-    TTS_PROVIDER: env.TTS_PROVIDER || '(não definido → usa elevenlabs)',
+    TTS_PROVIDER: env.TTS_PROVIDER || '(não definido → usa edge)',
     hasElevenKey: Boolean(env.ELEVENLABS_API_KEY),
     hasElevenVoice: Boolean(env.ELEVENLABS_VOICE_ID),
     hasGoogleKey: Boolean(env.GOOGLE_TTS_API_KEY),
     googleVoice: env.GOOGLE_TTS_VOICE || '(padrão pt-BR-Neural2-B)',
   };
   let attempt: unknown;
+  const started = performance.now();
   try {
     const result = await synthesizeSpeech(user.id, 'Teste de diagnóstico de voz.');
-    attempt = { ok: true, bytes: result.audio.length, cached: result.cached };
+    attempt = { ok: true, bytes: result.audio.length, cached: result.cached, provider: result.provider, degraded: result.provider !== provider, elapsedMs: Math.round(performance.now() - started) };
   } catch (error) {
     attempt = { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
   let upstream: unknown = '(sem probe)';
   if (provider === 'google' && env.GOOGLE_TTS_API_KEY) {
     upstream = await probeGoogle(env.GOOGLE_TTS_API_KEY, env.GOOGLE_TTS_VOICE?.trim() || 'pt-BR-Neural2-B');
-  } else if (env.ELEVENLABS_API_KEY && env.ELEVENLABS_VOICE_ID) {
+  } else if (provider === 'elevenlabs' && env.ELEVENLABS_API_KEY && env.ELEVENLABS_VOICE_ID) {
     upstream = await probeElevenLabs(env.ELEVENLABS_API_KEY, env.ELEVENLABS_VOICE_ID);
   }
   return Response.json({ provider, presence, attempt, upstream });

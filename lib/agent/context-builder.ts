@@ -48,7 +48,15 @@ export function selectConversationWindow(messages: readonly AgentMessage[], maxT
   let estimatedTokens = 0;
 
   for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
+    // A long answer must leave room for the user's request and recent exchanges.
+    // This only compacts model input; persistence still receives the complete turns.
+    const original = messages[index];
+    const maxChars = Number.isFinite(budget) ? Math.max(80, (Math.floor(budget / 4) - 4) * 4) : Infinity;
+    const marker = '\n[trecho intermediário omitido]\n';
+    const available = maxChars - marker.length;
+    const message = original.content.length > maxChars
+      ? { ...original, content: original.content.slice(0, Math.ceil(available * 0.7)) + marker + original.content.slice(-Math.floor(available * 0.3)) }
+      : original;
     const messageTokens = estimateMessageTokens(message);
     if (selected.length > 0 && estimatedTokens + messageTokens > budget) break;
     selected.unshift(message);

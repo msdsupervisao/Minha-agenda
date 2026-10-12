@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     const result = await synthesizeSpeech(user.id, text);
     return new Response(new Uint8Array(result.audio), { headers: {
       'content-type': 'audio/mpeg', 'cache-control': 'private, no-store',
-      'x-tts-cache': result.cached ? 'HIT' : 'MISS', 'x-tts-voice': 'elevenlabs',
+      'x-tts-cache': result.cached ? 'HIT' : 'MISS', 'x-tts-voice': result.provider,
     } });
   } catch { return Response.json({ error: 'tts_unavailable', fallback: 'browser' }, { status: 503 }); }
 }

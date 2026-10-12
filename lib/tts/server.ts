@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto';
 import { stripMarkdownForSpeech } from '../assistant/speech';
+import { synthesizeEdge } from './edge';
 
 // TTS providers, chosen by TTS_PROVIDER ('edge' default | 'gtranslate' | 'google' | 'elevenlabs'):
 // - edge: Microsoft Edge's online neural voices via the maintained edge-tts-universal library.
 //   Free, no key, no account; high-quality pt-BR (EDGE_TTS_VOICE, default pt-BR-AntonioNeural).
-//   Unofficial endpoint, so on failure we fall back to gtranslate so the voice never disappears.
+//   Unofficial endpoint; failed attempts are bounded and briefly disabled before retrying.
 // - gtranslate: Google Translate's public TTS. Free/no key, decent but basic; ~200 chars/request
-//   so we chunk and concatenate the MP3 parts. Used as the fallback for edge.
+//   so we chunk and concatenate the MP3 parts. Degraded fallback for edge.
 // - google: Google Cloud Text-to-Speech, neural pt-BR (needs billing + GOOGLE_TTS_API_KEY).
 // - elevenlabs: ElevenLabs multilingual v2 (needs a paid-tier key + ELEVENLABS_VOICE_ID).
 const ELEVEN_MODEL_ID = 'eleven_multilingual_v2';
@@ -19,12 +20,14 @@ const GTRANSLATE_MAX_CHARS = 200;
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 export function resolveProvider(env: NodeJS.ProcessEnv): string {
-  return (env.TTS_PROVIDER || 'edge').trim().toLowerCase();
+  return env.TTS_PROVIDER?.trim().toLowerCase() || 'edge';
 }
 
-export function createTtsService(request: typeof fetch = fetch) {
-  const cache = new Map<string, { audio: Uint8Array; expires: number }>();
-  const pending = new Map<string, Promise<Uint8Array>>();
+export function createTtsService(request: typeof fetch = fetch, options: { edge?: typeof synthesizeEdge; edgeTimeoutMs?: number } = {}) {
+  type Clip = { audio: Uint8Array; provider: string };
+  const cache = new Map<string, Clip & { expires: number }>();
+  const pending = new Map<string, Promise<Clip>>();
+  let edgeUnavailableUntil = 0;
   return async (userId: string, raw: string, env: NodeJS.ProcessEnv = process.env) => {
     const text = stripMarkdownForSpeech(raw).slice(0, 800).trim();
     if (!text) throw new Error('tts_empty');
@@ -47,52 +50,42 @@ export function createTtsService(request: typeof fetch = fetch) {
     // (or provider) never serves a stale clip generated with different settings.
     const key = createHash('sha256').update(JSON.stringify([userId, text, provider, voice])).digest('hex');
     const hit = cache.get(key);
-    if (hit && hit.expires > Date.now()) return { audio: hit.audio, cached: true };
+    if (hit && hit.expires > Date.now()) return { audio: hit.audio, provider: hit.provider, cached: true };
     cache.delete(key);
     const inflight = pending.get(key);
-    if (inflight) return { audio: await inflight, cached: true };
+    if (inflight) return { ...await inflight, cached: true };
     if (pending.size >= 4) throw new Error('tts_busy');
     const job = (async () => {
       let audio: Uint8Array;
+      let actualProvider = provider;
       if (provider === 'google') audio = await synthesizeGoogle(request, env.GOOGLE_TTS_API_KEY!, voice, text);
       else if (provider === 'elevenlabs') audio = await synthesizeElevenLabs(request, env.ELEVENLABS_API_KEY!, voice, text);
       else if (provider === 'edge') {
         // Edge is unofficial; if Microsoft blocks it (e.g. a DRM 403), fall back to the
         // always-available free Google Translate voice so the user still hears something.
-        try { audio = await synthesizeEdge(voice, text); }
-        catch { audio = await synthesizeGoogleTranslate(request, text); }
-      } else audio = await synthesizeGoogleTranslate(request, text);
+        const controller = new AbortController();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          if (Date.now() < edgeUnavailableUntil) throw new Error('tts_edge_cooldown');
+          const timeout = new Promise<never>((_, reject) => {
+            timer = setTimeout(() => { controller.abort(); reject(new Error('tts_timeout')); }, options.edgeTimeoutMs ?? 3000);
+          });
+          audio = await Promise.race([(options.edge || synthesizeEdge)(voice, text, controller.signal), timeout]);
+        } catch {
+          if (timer) edgeUnavailableUntil = Date.now() + 60_000;
+          audio = await synthesizeGoogleTranslate(request, text); actualProvider = 'gtranslate';
+        } finally { clearTimeout(timer); }
+      } else { audio = await synthesizeGoogleTranslate(request, text); actualProvider = 'gtranslate'; }
       if (!audio.length || audio.length > 2_000_000) throw new Error('tts_invalid_audio');
       // At most 32 small audio clips per warm server instance, scoped by user.
       if (cache.size >= 32) cache.delete(cache.keys().next().value!);
-      cache.set(key, { audio, expires: Date.now() + 15 * 60000 });
-      return audio;
+      cache.set(key, { audio, provider: actualProvider, expires: Date.now() + (actualProvider === provider ? 15 * 60000 : 60_000) });
+      return { audio, provider: actualProvider };
     })();
     pending.set(key, job);
-    try { return { audio: await job, cached: false }; }
+    try { return { ...await job, cached: false }; }
     finally { pending.delete(key); }
   };
-}
-
-// Microsoft Edge neural voices via the maintained edge-tts-universal library (handles the
-// Sec-MS-GEC anti-abuse token). Dynamic import so it only loads when this provider is used.
-async function synthesizeEdge(voice: string, text: string): Promise<Uint8Array> {
-  const { Communicate } = await import('edge-tts-universal');
-  const communicate = new Communicate(text, { voice });
-  const collect = (async () => {
-    const parts: Uint8Array[] = [];
-    for await (const chunk of communicate.stream()) {
-      if (chunk.type === 'audio' && chunk.data) parts.push(chunk.data);
-    }
-    const length = parts.reduce((sum, part) => sum + part.length, 0);
-    if (!length) throw new Error('tts_unavailable');
-    const audio = new Uint8Array(length);
-    let offset = 0;
-    for (const part of parts) { audio.set(part, offset); offset += part.length; }
-    return audio;
-  })();
-  const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('tts_timeout')), 25000));
-  return Promise.race([collect, timeout]);
 }
 
 async function synthesizeElevenLabs(request: typeof fetch, apiKey: string, voice: string, text: string): Promise<Uint8Array> {
@@ -106,7 +99,7 @@ async function synthesizeElevenLabs(request: typeof fetch, apiKey: string, voice
         model_id: ELEVEN_MODEL_ID,
         voice_settings: { stability: 0.5, similarity_boost: 0.8 },
       }),
-      signal: AbortSignal.timeout(25000),
+      signal: AbortSignal.timeout(6000),
       cache: 'no-store',
     },
   );
@@ -128,7 +121,7 @@ async function synthesizeGoogle(request: typeof fetch, apiKey: string, voice: st
         voice: { languageCode, name: voice },
         audioConfig: { audioEncoding: 'MP3' },
       }),
-      signal: AbortSignal.timeout(25000),
+      signal: AbortSignal.timeout(6000),
       cache: 'no-store',
     },
   );
@@ -159,22 +152,20 @@ function chunkForTranslate(text: string): string[] {
 }
 
 // Google Translate's public TTS: free, no key. Limited to ~200 chars/request, so we fetch each
-// chunk and concatenate the MP3 byte streams (sequential MP3 frames play back as one clip).
+// chunk and concatenate the MP3 byte streams. Fetch concurrently, retain text order.
 async function synthesizeGoogleTranslate(request: typeof fetch, text: string): Promise<Uint8Array> {
   const parts = chunkForTranslate(text);
   const total = parts.length;
-  const buffers: Uint8Array[] = [];
-  for (let idx = 0; idx < total; idx += 1) {
-    const q = parts[idx];
+  const buffers = await Promise.all(parts.map(async (q, idx) => {
     const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${GTRANSLATE_LANG}&client=tw-ob&total=${total}&idx=${idx}&textlen=${q.length}&q=${encodeURIComponent(q)}`;
     const response = await request(url, {
       headers: { 'user-agent': BROWSER_UA },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(3000),
       cache: 'no-store',
     });
     if (!response.ok || !response.headers.get('content-type')?.startsWith('audio/')) throw new Error('tts_unavailable');
-    buffers.push(new Uint8Array(await response.arrayBuffer()));
-  }
+    return new Uint8Array(await response.arrayBuffer());
+  }));
   const length = buffers.reduce((sum, buffer) => sum + buffer.length, 0);
   const audio = new Uint8Array(length);
   let offset = 0;

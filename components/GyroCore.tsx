@@ -357,13 +357,17 @@ export default function GyroCore({
 }: Props) {
   const container = useRef<HTMLButtonElement>(null);
   const scene = useRef<GyroScene | null>(null);
+  const fallback = useRef<HTMLSpanElement>(null);
   const config: Config = { rings, finish, tint, color, thickness, innerRadius, gap, spin, hoverBoost, dragSensitivity, sizePercent };
   const configRef = useRef(config);
   const initialStateRef = useRef(state);
 
   useEffect(() => {
     if (!container.current) return;
-    const instance = new GyroScene(container.current, configRef.current, initialStateRef.current);
+    let instance: GyroScene;
+    try { instance = new GyroScene(container.current, configRef.current, initialStateRef.current); }
+    catch { return; }
+    if (fallback.current) fallback.current.style.display = 'none';
     scene.current = instance;
     instance.setSize(container.current.clientWidth, container.current.clientHeight);
     instance.start();
@@ -371,7 +375,8 @@ export default function GyroCore({
       if (container.current) instance.setSize(container.current.clientWidth, container.current.clientHeight);
     });
     observer.observe(container.current);
-    return () => { observer.disconnect(); instance.dispose(); scene.current = null; };
+    const fallbackElement = fallback.current;
+    return () => { observer.disconnect(); instance.dispose(); scene.current = null; if (fallbackElement) fallbackElement.style.display = 'inline-grid'; };
   }, []);
 
   useEffect(() => { scene.current?.setState(state); }, [state]);
@@ -381,5 +386,5 @@ export default function GyroCore({
     scene.current?.updateConfig(nextConfig);
   }, [rings, finish, tint, color, thickness, innerRadius, gap, spin, hoverBoost, dragSensitivity, sizePercent]);
 
-  return <button ref={container} type="button" onClick={onPress} aria-label="Iniciar comando por voz" style={{ position: 'relative', width: '100%', height: '100%', minWidth: 180, minHeight: 250, overflow: 'hidden', border: 0, padding: 0, background: 'transparent', cursor: 'pointer', touchAction: 'manipulation', ...style }} />;
+  return <button ref={container} type="button" onClick={onPress} aria-label="Iniciar comando por voz" style={{ position: 'relative', width: '100%', height: '100%', minWidth: 180, minHeight: 250, overflow: 'hidden', border: 0, padding: 0, background: 'transparent', cursor: 'pointer', touchAction: 'manipulation', ...style }}><span ref={fallback} aria-hidden="true" style={{ display: 'inline-grid', placeItems: 'center', width: 150, height: 150, borderRadius: '50%', border: '2px solid #14b4ef', background: 'radial-gradient(circle, #14b4ef 0%, #08334d 45%, transparent 70%)', color: '#fff', boxShadow: '0 0 40px #14b4ef55' }}>●</span></button>;
 }

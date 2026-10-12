@@ -16,6 +16,8 @@ import { createPersonalAgendaTools } from './tools/personal-agenda';
 import { createLongTermMemoryTools } from './tools/long-term-memory';
 import { createCourseKnowledgeTools } from './tools/course-knowledge';
 import { createWeatherTools } from './tools/weather';
+import { createEducationTools, type EducationDraft } from './tools/education';
+import { createEducationDraftGenerator } from '@/lib/education/draft-generator';
 import {
   createNoticeScheduleTools,
   createSupabaseScheduleHandoffStore,
@@ -47,6 +49,7 @@ export async function runAgentPilot(
     };
     now?: Date;
     weatherLocation?: { latitude: number; longitude: number };
+    educationDraft?: EducationDraft;
     onProgress?: (event: AgentProgress) => void;
   } = {},
 ) {
@@ -92,11 +95,15 @@ export async function runAgentPilot(
       }
     : undefined;
   const personalStore = options.personalStore || createSupabasePersonalAgendaStore(client);
+  const educationDraft = options.educationDraft || (config.activeProvider !== 'local' && config.apiKey
+    ? createEducationDraftGenerator(config)
+    : undefined);
   const registry = new ToolRegistry([
     ...createCourseKnowledgeTools(),
     ...createWeatherTools(),
     ...createClassTools(catalog),
     ...createNoticeScheduleTools(catalog, scheduleStore, { compose }),
+    ...createEducationTools(educationDraft),
     ...createPersonalAgendaTools(personalStore),
     ...createLongTermMemoryTools(personalStore),
   ]);

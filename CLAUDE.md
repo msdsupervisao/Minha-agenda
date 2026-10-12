@@ -65,7 +65,7 @@ Enabled by `AGENT_V1_ENABLED=true`. This is the "JARVIS" intent loop, kept separ
 
 - `lib/assistant/voice-session.ts` — Web Speech recognition session. Owns all timers/callbacks so late mobile events can't submit twice; merges Android's progressively-growing segments and de-dupes echoed adjacent words; bounded silence/watchdog/max-listen timers.
 - `lib/tts/client.ts` — plays the TTS clip. **Mobile autoplay matters:** `unlock()` must run inside a real user gesture (tap mic / submit) to "bless" a single persistent `<audio>` element with a valid silent MP3, or mobile blocks the later `play()` and it falls back to the robotic browser voice. `AssistantHub` calls `primeSpeech()` for this.
-- `lib/tts/server.ts` — synthesis. Provider chosen by `TTS_PROVIDER` (`elevenlabs` default | `google`). ElevenLabs needs `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID`; Google Cloud TTS needs `GOOGLE_TTS_API_KEY` (+ optional `GOOGLE_TTS_VOICE`, default `pt-BR-Neural2-B`). Missing key/voice → `tts_unconfigured`; upstream rejection → `tts_unavailable`. `app/api/tts/route.ts` requires auth and masks all failures as a generic 503 so the client falls back to the browser voice.
+- `lib/tts/server.ts` — synthesis. `TTS_PROVIDER` defaults to `edge` with Brazilian male voice Antônio. `lib/tts/edge.ts` owns socket cancellation: at most 3 seconds per attempt, then a 60-second cooldown and degraded `gtranslate` fallback. Actual provider is returned in `x-tts-voice`; a successful audio response does not prove the male voice was available. `google` needs `GOOGLE_TTS_API_KEY`; `elevenlabs` needs `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID`. The authenticated route returns a generic 503 on failure so the client can use browser speech.
 
 ## Data, cron, push, WhatsApp, mobile
 

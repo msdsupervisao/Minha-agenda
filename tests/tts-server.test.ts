@@ -57,10 +57,25 @@ function audioFetch(calls: string[]) {
   }) as unknown as typeof fetch;
 }
 
-test('provider padrão é edge (Microsoft neural grátis); TTS_PROVIDER sobrescreve', () => {
+test('provider padrão preserva a voz masculina Edge; TTS_PROVIDER sobrescreve', () => {
   assert.equal(resolveProvider({} as NodeJS.ProcessEnv), 'edge');
-  assert.equal(resolveProvider({ TTS_PROVIDER: 'gtranslate' } as unknown as NodeJS.ProcessEnv), 'gtranslate');
+  assert.equal(resolveProvider({ TTS_PROVIDER: '  ' } as unknown as NodeJS.ProcessEnv), 'edge');
+  assert.equal(resolveProvider({ TTS_PROVIDER: 'edge' } as unknown as NodeJS.ProcessEnv), 'edge');
   assert.equal(resolveProvider({ TTS_PROVIDER: ' Google ' } as unknown as NodeJS.ProcessEnv), 'google');
+});
+
+test('Google Translate permanece disponível quando selecionado explicitamente', async () => {
+  const calls: string[] = [];
+  const synth = createTtsService(audioFetch(calls));
+  const result = await synth('user-1', 'Olá', { TTS_PROVIDER: 'gtranslate', NODE_ENV: 'test' });
+  assert.deepEqual(Buffer.from(result.audio), Buffer.from('audio-bytes'));
+  assert.equal(result.provider, 'gtranslate');
+  assert.equal(calls.length, 1);
+  assert.match(calls[0], /translate\.google\.com\/translate_tts/);
+  const cached = await synth('user-1', 'Olá', { TTS_PROVIDER: 'gtranslate', NODE_ENV: 'test' });
+  assert.equal(cached.cached, true);
+  assert.equal(cached.provider, 'gtranslate');
+  assert.equal(calls.length, 1);
 });
 
 test('gtranslate: chama o endpoint público do Google Translate quando selecionado', async () => {
@@ -92,4 +107,34 @@ test('ElevenLabs é usado quando TTS_PROVIDER=elevenlabs', async () => {
 
   assert.equal(result.cached, false);
   assert.match(calls[0], /api\.elevenlabs\.io/);
+});
+
+test('padrão solicita Antônio e preserva o provedor real no cache', async () => {
+  let selectedVoice = '';
+  const synth = createTtsService(audioFetch([]), { edge: async (voice) => {
+    selectedVoice = voice;
+    return Buffer.from('male-audio');
+  } });
+  const first = await synth('user', 'Olá Fernando', {} as NodeJS.ProcessEnv);
+  const cached = await synth('user', 'Olá Fernando', {} as NodeJS.ProcessEnv);
+  assert.equal(selectedVoice, 'pt-BR-AntonioNeural');
+  assert.equal(first.provider, 'edge');
+  assert.equal(cached.provider, 'edge');
+  assert.equal(cached.cached, true);
+});
+
+test('Edge travado é cancelado e a próxima frase não repete a espera', async () => {
+  let attempts = 0;
+  let signal: AbortSignal | undefined;
+  const synth = createTtsService(audioFetch([]), { edgeTimeoutMs: 10, edge: async (_voice, _text, receivedSignal) => {
+    attempts++;
+    signal = receivedSignal;
+    return new Promise<Uint8Array>(() => {});
+  } });
+  const first = await synth('user', 'Primeira frase', {} as NodeJS.ProcessEnv);
+  const next = await synth('user', 'Outra frase', {} as NodeJS.ProcessEnv);
+  assert.equal(signal?.aborted, true);
+  assert.equal(attempts, 1);
+  assert.equal(first.provider, 'gtranslate');
+  assert.equal(next.provider, 'gtranslate');
 });
