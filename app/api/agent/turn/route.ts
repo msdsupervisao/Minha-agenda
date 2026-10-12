@@ -1,9 +1,11 @@
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { resolveTimezone } from '@/lib/data/server-timezone';
 import type { AgentRunResult, AgentProgress } from '@/lib/agent/contracts';
 import { randomUUID } from 'node:crypto';
-import { persistAgentTurn } from '@/lib/agent/context-builder';
+import { persistAgentTurn, updateRollingSummary } from '@/lib/agent/context-builder';
+import { createConversationSummarizer } from '@/lib/agent/conversation-summarizer';
+import { getAiRuntimeConfig } from '@/lib/assistant/ai-config';
 import { SupabasePendingApprovalStore } from '@/lib/agent/pending-approval-store';
 import { AgentPilotUnavailableError, agentPilotEnabled, runAgentPilot } from '@/lib/agent/server-agent';
 import { parseAiRouteChainCookieHeader } from '@/lib/assistant/ai-route';
@@ -63,6 +65,8 @@ async function handleTurn(request: Request, onProgress?: (event: AgentProgress) 
   try {
     const client = await createClient();
     const routeChain = parseAiRouteChainCookieHeader(request.headers.get('cookie'));
+    const aiConfig = getAiRuntimeConfig(process.env, routeChain);
+    const summarizer = aiConfig.activeProvider !== 'local' && aiConfig.apiKey ? createConversationSummarizer(aiConfig) : undefined;
     if ('approvalId' in parsed.data) {
       if (!serviceConfigured()) return NextResponse.json({ error: 'Armazenamento seguro de aprovação indisponível.' }, { status: 503 });
       const store = new SupabasePendingApprovalStore(createServiceClient());
@@ -71,8 +75,10 @@ async function handleTurn(request: Request, onProgress?: (event: AgentProgress) 
       if (parsed.data.decision === 'cancel') {
         await store.finish(pending.id, user.id, 'cancelled');
         const reply = 'Tudo bem. Não executei a ação.';
-        await persistAgentTurn(client, user.id, { userText: 'Cancelar', result: { reply, toolResults: [] } });
-        return NextResponse.json({ kind: 'cancelled', reply }, noStore());
+        const { retiredTurns } = await persistAgentTurn(client, user.id, { userText: 'Cancelar', result: { reply, toolResults: [] } });
+        const response = NextResponse.json({ kind: 'cancelled', reply }, noStore());
+        if (summarizer && retiredTurns.length) after(() => updateRollingSummary(client, user.id, retiredTurns, summarizer));
+        return response;
       }
 
       let result: AgentRunResult;
@@ -90,20 +96,24 @@ async function handleTurn(request: Request, onProgress?: (event: AgentProgress) 
         throw error;
       }
       await store.finish(pending.id, user.id, result.kind === 'failed' ? 'failed' : 'consumed');
-      await persistAgentTurn(client, user.id, { userText: 'Confirmo.', result });
-      return respondWithResult(result, user.id, pending.source, pending.timezone, store);
+      const { retiredTurns } = await persistAgentTurn(client, user.id, { userText: 'Confirmo.', result });
+      const response = await respondWithResult(result, user.id, pending.source, pending.timezone, store);
+      if (summarizer && retiredTurns.length) after(() => updateRollingSummary(client, user.id, retiredTurns, summarizer));
+      return response;
     }
 
     const timezone = await resolveTimezone();
     const result = await runAgentPilot(client, user.id, parsed.data.text, parsed.data.source, timezone, { onProgress, routeChain, weatherLocation: parsed.data.weatherLocation });
-    await persistAgentTurn(client, user.id, { userText: parsed.data.text, result });
+    const { retiredTurns } = await persistAgentTurn(client, user.id, { userText: parsed.data.text, result });
     const store = result.kind === 'approval_required' && serviceConfigured()
       ? new SupabasePendingApprovalStore(createServiceClient())
       : null;
     if (result.kind === 'approval_required' && !store) {
       return NextResponse.json({ error: 'Armazenamento seguro de aprovação indisponível.' }, { status: 503 });
     }
-    return respondWithResult(result, user.id, parsed.data.source, timezone, store);
+    const response = await respondWithResult(result, user.id, parsed.data.source, timezone, store);
+    if (summarizer && retiredTurns.length) after(() => updateRollingSummary(client, user.id, retiredTurns, summarizer));
+    return response;
   } catch (error) {
     if (error instanceof AgentPilotUnavailableError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 503 });

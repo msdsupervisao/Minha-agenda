@@ -4,6 +4,7 @@ export type AgendaItem = { id: string; kind: string; title: string; at: string; 
 export type PersonalContact = { id: string; name: string; aliases: string[]; role: string | null; className: string | null };
 export type SavedNote = { id: string; content: string };
 export type SavedReminder = { id: string; title: string; dueAt: string; notificationStatus: string };
+export type SavedLongTermMemory = { id: string; kind: 'preference' | 'fact' | 'entity' | 'alias' | 'routine'; content: string; origin: 'explicit_user' | 'user_confirmed'; createdAt: string };
 export interface PersonalAgendaStore {
   agenda(userId: string, from: string, until: string): Promise<{ items: AgendaItem[]; possiblyTruncated: boolean }>;
   contacts(userId: string): Promise<PersonalContact[]>;
@@ -11,6 +12,9 @@ export interface PersonalAgendaStore {
   getNote(userId: string, id: string): Promise<SavedNote | null>;
   createReminder(userId: string, title: string, dueAt: string): Promise<string>;
   getReminder(userId: string, id: string): Promise<SavedReminder | null>;
+  listLongTermMemory?(userId: string): Promise<SavedLongTermMemory[]>;
+  addLongTermMemory?(userId: string, memory: Omit<SavedLongTermMemory, 'id' | 'createdAt'>): Promise<SavedLongTermMemory>;
+  deleteLongTermMemory?(userId: string, id: string): Promise<boolean>;
 }
 
 export function createSupabasePersonalAgendaStore(client: SupabaseClient): PersonalAgendaStore {
@@ -53,5 +57,40 @@ export function createSupabasePersonalAgendaStore(client: SupabaseClient): Perso
       if (error) throw new Error('reminder_verification_failed');
       return data ? { id: data.id, title: data.title, dueAt: data.due_at, notificationStatus: data.notification_status } : null;
     },
+    async listLongTermMemory(userId) {
+      const { data, error } = await client.from('agent_contexts').select('long_term_memory').eq('user_id', userId).maybeSingle();
+      if (error) throw new Error('memory_read_failed');
+      return (Array.isArray(data?.long_term_memory) ? data.long_term_memory : []).filter(isSavedLongTermMemory).slice(-50);
+    },
+    async addLongTermMemory(userId, memory) {
+      const current = await readLongTermMemory(client, userId);
+      const duplicate = current.find((item) => item.kind === memory.kind && item.content.toLocaleLowerCase('pt-BR') === memory.content.toLocaleLowerCase('pt-BR'));
+      if (duplicate) return duplicate;
+      const saved: SavedLongTermMemory = { ...memory, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
+      const { error } = await client.from('agent_contexts').upsert({ user_id: userId, long_term_memory: [...current, saved].slice(-50), updated_at: saved.createdAt }, { onConflict: 'user_id' });
+      if (error) throw new Error('memory_write_failed');
+      return saved;
+    },
+    async deleteLongTermMemory(userId, id) {
+      const current = await readLongTermMemory(client, userId);
+      if (!current.some((item) => item.id === id)) return false;
+      const { error } = await client.from('agent_contexts').upsert({ user_id: userId, long_term_memory: current.filter((item) => item.id !== id), updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+      if (error) throw new Error('memory_write_failed');
+      return true;
+    },
   };
+}
+
+async function readLongTermMemory(client: SupabaseClient, userId: string) {
+  const { data, error } = await client.from('agent_contexts').select('long_term_memory').eq('user_id', userId).maybeSingle();
+  if (error) throw new Error('memory_read_failed');
+  return (Array.isArray(data?.long_term_memory) ? data.long_term_memory : []).filter(isSavedLongTermMemory).slice(-50);
+}
+
+function isSavedLongTermMemory(value: unknown): value is SavedLongTermMemory {
+  if (!value || typeof value !== 'object') return false;
+  const item = value as Record<string, unknown>;
+  return typeof item.id === 'string' && typeof item.content === 'string'
+    && ['preference', 'fact', 'entity', 'alias', 'routine'].includes(String(item.kind))
+    && ['explicit_user', 'user_confirmed'].includes(String(item.origin)) && typeof item.createdAt === 'string';
 }

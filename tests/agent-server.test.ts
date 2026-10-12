@@ -126,7 +126,7 @@ test('piloto compõe contexto, tools reais e provedor sem tocar no fluxo antigo'
   assert.equal(result.kind, 'completed');
   assert.equal(provider.request?.messages[0].content, 'Falamos das turmas ontem.');
   assert.equal(provider.request?.messages.at(-1)?.content, 'Qual era aquela turma de tecnologia?');
-  assert.deepEqual(provider.request?.tools.map((tool) => tool.name), ['get_course_knowledge', 'get_weather', 'list_classes', 'find_classes', 'get_notice_template', 'prepare_notice_schedule', 'get_schedule_status', 'compose_notice', 'list_agenda', 'find_contacts', 'create_note', 'create_reminder']);
+  assert.deepEqual(provider.request?.tools.map((tool) => tool.name), ['get_course_knowledge', 'get_weather', 'list_classes', 'find_classes', 'get_notice_template', 'prepare_notice_schedule', 'get_schedule_status', 'compose_notice', 'list_agenda', 'find_contacts', 'create_note', 'create_reminder', 'list_long_term_memory', 'remember_user_fact', 'forget_user_memory']);
 });
 
 test('aprovações agentic ficam inacessíveis ao cliente e expiram no servidor', () => {

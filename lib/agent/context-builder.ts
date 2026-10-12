@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AgentContextState, AgentMessage, AgentRunResult, AgentToolResult, JsonObject, JsonValue } from './contracts';
 import { emptyAgentContextState } from './contracts';
+import { CONVERSATION_SUMMARY_MAX_CHARS, CONVERSATION_SUMMARY_TIMEOUT_MS, type ConversationSummarizer } from './conversation-summarizer';
 
 export const DEFAULT_CONTEXT_TOKEN_BUDGET = 3_000;
 
@@ -81,14 +82,14 @@ export function parseAgentContextRow(value: unknown): LoadedAgentContext {
   };
 }
 
-export function parseStoredAgentContext(value: unknown, fallback?: LoadedAgentContext): LoadedAgentContext {
+export function parseStoredAgentContext(value: unknown, fallback?: LoadedAgentContext, maxTokens = DEFAULT_CONTEXT_TOKEN_BUDGET): LoadedAgentContext {
   if (!value || typeof value !== 'object') return fallback || { conversation: [], state: emptyAgentContextState() };
   const row = value as Record<string, unknown>;
   const focus = jsonValue(row.focus);
   const operationalMemory = jsonValue(row.operational_memory);
   const longTermMemory = jsonValue(row.long_term_memory);
   return {
-    conversation: parseAgentConversation(row.recent_turns),
+    conversation: parseAgentConversation(row.recent_turns, maxTokens),
     state: {
       summary: typeof row.summary === 'string' && row.summary.trim() ? row.summary.trim() : fallback?.state.summary || null,
       focus: isJsonObject(focus) ? focus : fallback?.state.focus || null,
@@ -110,26 +111,69 @@ export async function persistAgentTurn(
     .eq('user_id', userId)
     .maybeSingle();
   if (error) throw new Error('load:agent_context_for_persist');
-  const current = parseStoredAgentContext(data);
+  // Limit model input by tokens, but retain the full stored history during persistence.
+  const current = parseStoredAgentContext(data, undefined, Infinity);
   const now = input.now || new Date();
   const next = evolveAgentContext(current, { ...input, now });
-
   const { error: persistError } = await client.from('agent_contexts').upsert({
     user_id: userId,
     recent_turns: next.conversation.map((message) => ({ role: message.role, text: message.content })),
-    summary: next.state.summary,
     focus: next.state.focus,
     operational_memory: next.state.operationalMemory,
     long_term_memory: next.state.longTermMemory,
     updated_at: now.toISOString(),
   }, { onConflict: 'user_id' });
   if (persistError) throw new Error('persist:agent_context');
+  return { retiredTurns: next.retiredTurns };
 }
 
+// Best effort: concurrent callbacks can overwrite each other's summary, and failed
+// batches are not retried. A persistent retired-turn buffer is a future improvement.
+export async function updateRollingSummary(
+  client: SupabaseClient,
+  userId: string,
+  retiredTurns: readonly AgentMessage[],
+  summarizer?: ConversationSummarizer,
+  timeoutMs = CONVERSATION_SUMMARY_TIMEOUT_MS,
+) {
+  if (!summarizer || retiredTurns.length === 0) return;
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new Error('conversation_summary_timeout'));
+      }, timeoutMs);
+    });
+    await Promise.race([
+      (async () => {
+        const { data, error } = await client.from('agent_contexts')
+          .select('summary').eq('user_id', userId).abortSignal(controller.signal).maybeSingle();
+        if (error) throw new Error('load:conversation_summary');
+        if (!data || controller.signal.aborted) return;
+        const previousSummary = typeof data.summary === 'string' && data.summary.trim() ? data.summary.trim() : null;
+        const summary = await summarizer(previousSummary, retiredTurns, controller.signal);
+        if (controller.signal.aborted || typeof summary !== 'string' || !summary.trim()) return;
+        // Only update the existing row; never replace newer turns or recreate deleted context.
+        const { error: updateError } = await client.from('agent_contexts').update({
+          summary: summary.trim().slice(0, CONVERSATION_SUMMARY_MAX_CHARS),
+          updated_at: new Date().toISOString(),
+        }).eq('user_id', userId).abortSignal(controller.signal);
+        if (updateError) throw new Error('persist:conversation_summary');
+      })(),
+      timeout,
+    ]);
+  } catch {
+    // Optional background work must not affect the response or erase the prior summary.
+  } finally {
+    clearTimeout(timer);
+  }
+}
 export function evolveAgentContext(
   current: LoadedAgentContext,
   input: { userText: string; result: Pick<AgentRunResult, 'reply' | 'toolResults'>; now: Date },
-): LoadedAgentContext {
+): LoadedAgentContext & { retiredTurns: AgentMessage[] } {
   const now = input.now;
   const observations = input.result.toolResults
     .filter((result) => result.status !== 'approval_required')
@@ -142,10 +186,11 @@ export function evolveAgentContext(
     ...current.conversation,
     { role: 'user' as const, content: input.userText.trim() },
     { role: 'assistant' as const, content: input.result.reply.trim() },
-  ].filter((message) => message.content).slice(-50);
+  ].filter((message) => message.content);
 
   return {
-    conversation: recentTurns,
+    conversation: recentTurns.slice(-50),
+    retiredTurns: recentTurns.slice(0, Math.max(0, recentTurns.length - 50)),
     state: {
       ...current.state,
       focus,

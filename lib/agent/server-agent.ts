@@ -13,6 +13,7 @@ import { OpenAIResponsesAgentProvider } from './providers/openai-responses';
 import { ToolRegistry } from './tool-registry';
 import { createClassTools, createSupabaseClassCatalog, type ClassCatalog } from './tools/classes';
 import { createPersonalAgendaTools } from './tools/personal-agenda';
+import { createLongTermMemoryTools } from './tools/long-term-memory';
 import { createCourseKnowledgeTools } from './tools/course-knowledge';
 import { createWeatherTools } from './tools/weather';
 import {
@@ -90,12 +91,14 @@ export async function runAgentPilot(
         return { message: result.message };
       }
     : undefined;
+  const personalStore = options.personalStore || createSupabasePersonalAgendaStore(client);
   const registry = new ToolRegistry([
     ...createCourseKnowledgeTools(),
     ...createWeatherTools(),
     ...createClassTools(catalog),
     ...createNoticeScheduleTools(catalog, scheduleStore, { compose }),
-    ...createPersonalAgendaTools(options.personalStore || createSupabasePersonalAgendaStore(client)),
+    ...createPersonalAgendaTools(personalStore),
+    ...createLongTermMemoryTools(personalStore),
   ]);
   return new AgentOrchestrator(provider, registry, { onProgress: options.onProgress }).run({
     text,
