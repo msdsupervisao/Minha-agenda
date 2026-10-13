@@ -82,7 +82,7 @@ export function createNoticeScheduleTools(
   const compose = options.compose;
   return [{
     name: 'prepare_notice_schedule',
-    description: 'Depois da confirmação, cria um handoff para o celular com aviso de uma turma real. Use este fluxo quando o objetivo for um aviso de aula no WhatsApp, inclusive em pedidos escritos como “me lembre de mandar o aviso”. Para o texto: bodySource=model usa um dos 3 modelos fixos (informe modelNumber e o body exato do modelo); bodySource=composed usa um texto escrito por compose_notice (modelNumber=null e body igual ao rascunho aprovado). Para “daqui a N minutos/horas”, use scheduleKind=delay_minutes; para data e hora de calendário, use scheduleKind=local_datetime. Isso ainda NÃO significa que o celular agendou: status awaiting_device exige abrir o app e aguardar o ACK.',
+    description: 'Depois da confirmação, cria um handoff para o celular com aviso de uma turma real. Para um aviso novo escrito por IA, use bodySource=composed com o texto de compose_notice; nunca escolha um modelo salvo a menos que o usuário peça explicitamente um modelo. bodySource=model só serve para um dos 3 modelos fixos pedidos pelo usuário (informe modelNumber e o body exato). Para “daqui a N minutos/horas”, use scheduleKind=delay_minutes; para data e hora de calendário, use scheduleKind=local_datetime. Só chame esta ferramenta se o usuário pedir envio/agendamento, não quando pedir apenas um rascunho. Isso ainda NÃO significa que o celular agendou: status awaiting_device exige abrir o app e aguardar o ACK.',
     risk: 'external',
     inputSchema: z.object({
       classId: z.string().uuid(),
@@ -189,6 +189,7 @@ export function createNoticeScheduleTools(
       baseMessage: z.string().trim().min(1).max(4000).nullable()
         .describe('Rascunho anterior a reescrever quando o usuário pede correção de estilo. null na primeira composição.'),
     }).strict(),
+    normalizeArguments: normalizeComposeNoticeArguments,
     async execute(input, context) {
       if (!compose) return notComposed('composition_unavailable', 'A composição por IA não está disponível agora; use um modelo fixo.');
       const classId = String(input.classId);
@@ -218,7 +219,7 @@ export function createNoticeScheduleTools(
   }];
 }
 
-export function normalizeNoticeScheduleArguments(input: JsonObject): JsonObject {
+export function normalizeNoticeScheduleArguments(input: JsonObject, context?: AgentExecutionContext): JsonObject {
   const normalized = { ...input };
   if (!normalized.bodySource) {
     normalized.bodySource = typeof normalized.modelNumber === 'number' ? 'model' : 'composed';
@@ -235,11 +236,39 @@ export function normalizeNoticeScheduleArguments(input: JsonObject): JsonObject 
     if (typeof normalized.localDueAt === 'string') {
       const commonIso = normalized.localDueAt.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?$/);
       if (commonIso) normalized.localDueAt = commonIso[1];
+      else if (context) normalized.localDueAt = parsePortugueseLocalDateTime(normalized.localDueAt, context);
     }
   } else if (normalized.scheduleKind === 'delay_minutes') {
     normalized.localDueAt = null;
   }
   return normalized;
+}
+
+export function normalizeComposeNoticeArguments(input: JsonObject): JsonObject {
+  const normalized = { ...input };
+  for (const key of ['styleHint', 'baseMessage'] as const) {
+    if (typeof normalized[key] === 'string' && normalized[key].trim() === '') normalized[key] = null;
+  }
+  return normalized;
+}
+
+function parsePortugueseLocalDateTime(value: string, context: AgentExecutionContext) {
+  const match = value.trim().match(/^(hoje|amanh[ãa])\s*(?:às?\s*)?(\d{1,2})(?::(\d{2}))?\s*(?:h|horas?)?$/iu);
+  if (!match) return value;
+  const hour = Number(match[2]);
+  const minute = Number(match[3] || '0');
+  if (hour > 23 || minute > 59) return value;
+
+  const localDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone: context.timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(context.now);
+  const [year, month, day] = localDate.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day + (match[1].toLocaleLowerCase('pt-BR') === 'hoje' ? 0 : 1)));
+  const datePart = [date.getUTCFullYear(), String(date.getUTCMonth() + 1).padStart(2, '0'), String(date.getUTCDate()).padStart(2, '0')].join('-');
+  return `${datePart}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
 
 function templateBody(schoolClass: Awaited<ReturnType<ClassCatalog['list']>>[number], modelNumber: number) {

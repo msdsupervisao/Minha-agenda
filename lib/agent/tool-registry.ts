@@ -35,10 +35,10 @@ export class ToolRegistry {
     }));
   }
 
-  normalizeCall(call: AgentToolCall): AgentToolCall {
+  normalizeCall(call: AgentToolCall, context?: AgentExecutionContext): AgentToolCall {
     const tool = this.tools.get(call.name);
     return tool?.normalizeArguments
-      ? { ...call, arguments: tool.normalizeArguments(call.arguments) }
+      ? { ...call, arguments: tool.normalizeArguments(call.arguments, context) }
       : call;
   }
 
@@ -50,7 +50,7 @@ export class ToolRegistry {
     const tool = this.tools.get(call.name);
     if (!tool) return failure(call, 'read', 'unknown_tool', 'Ferramenta não registrada.');
 
-    const normalizedCall = this.normalizeCall(call);
+    const normalizedCall = this.normalizeCall(call, context);
     const parsed = tool.inputSchema.safeParse(normalizedCall.arguments);
     if (!parsed.success) {
       return failure(normalizedCall, typeof tool.risk === 'string' ? tool.risk : 'critical', 'invalid_arguments', {

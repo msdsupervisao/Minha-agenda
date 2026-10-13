@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { AgentOrchestrator } from '../lib/agent/orchestrator';
 import { ToolRegistry } from '../lib/agent/tool-registry';
-import { emptyAgentContextState, type AgentExecutionContext } from '../lib/agent/contracts';
+import { emptyAgentContextState, emptyAgentUsage, type AgentExecutionContext, type AgentProvider } from '../lib/agent/contracts';
 import {
   createNoticeScheduleTools,
+  normalizeNoticeScheduleArguments,
   type ScheduleHandoffStore,
 } from '../lib/agent/tools/notice-schedule';
+import { createClassTools } from '../lib/agent/tools/classes';
 import type { ClassCatalog } from '../lib/agent/tools/classes';
 import type { SchoolClass } from '../lib/assistant/types';
 
@@ -34,6 +37,126 @@ const design: SchoolClass = {
 };
 
 const catalog: ClassCatalog = { async list() { return [design]; } };
+
+test('normaliza “amanhã às 14 horas” para data local usando o fuso do turno', () => {
+  const result = normalizeNoticeScheduleArguments({
+    classId: design.id,
+    bodySource: 'model',
+    modelNumber: 2,
+    recipientName: design.whatsappGroup!,
+    body: design.noticeTemplateMotivational!,
+    localDueAt: 'amanhã às 14 horas',
+    delayMinutes: null,
+  }, context);
+
+  assert.equal(result.scheduleKind, 'local_datetime');
+  assert.equal(result.localDueAt, '2026-08-27T14:00');
+  assert.equal(result.delayMinutes, null);
+});
+
+test('pedido real de aviso para amanhã às 14h chega à confirmação com horário correto', async () => {
+  const store = new MemoryScheduleStore();
+  let providerCalls = 0;
+  const provider: AgentProvider = {
+    name: 'test-provider',
+    async generate() {
+      if (store.rows.length > 0) throw new Error('unexpected_provider_call');
+      providerCalls += 1;
+      if (providerCalls === 1) return {
+        provider: 'test-provider', model: 'test-model', text: '',
+        toolCalls: [{ callId: 'find-designer', name: 'find_classes', arguments: { query: 'Designer Gráfico de quarta' } }],
+        usage: emptyAgentUsage(), continuation: { step: 1 },
+      };
+      return {
+        provider: 'test-provider', model: 'test-model', text: '',
+        toolCalls: [{
+          callId: 'schedule-designer',
+          name: 'prepare_notice_schedule',
+          arguments: {
+            classId: design.id,
+            modelNumber: 2,
+            recipientName: design.whatsappGroup!,
+            body: design.noticeTemplateMotivational!,
+            localDueAt: 'amanhã às 14 horas',
+            delayMinutes: null,
+          },
+        }],
+        usage: emptyAgentUsage(),
+      };
+    },
+  };
+  const registry = new ToolRegistry([
+    ...createClassTools(catalog),
+    ...createNoticeScheduleTools(catalog, store),
+  ]);
+
+  const result = await new AgentOrchestrator(provider, registry).run({
+    text: 'prepara uma mensagem de aviso de aula para turma de designer gráfico de quarta das 7:00 às 9:00 para amanhã às 14 horas',
+    context,
+  });
+
+  assert.equal(result.kind, 'approval_required');
+  if (result.kind !== 'approval_required') assert.fail('expected an approval request');
+  assert.match(result.reply, /27\/08\/2026, 14:00/);
+  assert.equal(store.rows.length, 0);
+  assert.equal(result.pendingApprovals[0].arguments.localDueAt, '2026-08-27T14:00');
+});
+
+test('pedido apenas para criar o aviso usa IA e não exige modelo, data ou envio', async () => {
+  const store = new MemoryScheduleStore();
+  let providerCalls = 0;
+  let composeArgs: { topic: string; styleHint: string | null; baseMessage: string | null } | null = null;
+  const provider: AgentProvider = {
+    name: 'test-provider',
+    async generate() {
+      providerCalls += 1;
+      if (providerCalls === 1) return {
+        provider: 'test-provider', model: 'test-model', text: '',
+        toolCalls: [{ callId: 'find-class', name: 'find_classes', arguments: { query: 'Designer de quarta-feira' } }],
+        usage: emptyAgentUsage(), continuation: { step: 1 },
+      };
+      if (providerCalls === 3) return {
+        provider: 'test-provider', model: 'test-model', text: 'Criei um rascunho novo para a turma.',
+        toolCalls: [], usage: emptyAgentUsage(),
+      };
+      return {
+        provider: 'test-provider', model: 'test-model', text: '',
+        toolCalls: [{
+          callId: 'compose-class-notice', name: 'compose_notice', arguments: {
+            classId: design.id,
+            topic: 'Aviso de aula para a turma de quarta-feira',
+            styleHint: '',
+            baseMessage: '',
+          },
+        }],
+        usage: emptyAgentUsage(),
+      };
+    },
+  };
+  const registry = new ToolRegistry([
+    ...createClassTools(catalog),
+    ...createNoticeScheduleTools(catalog, store, {
+      compose: async ({ topic, styleHint, baseMessage }) => {
+        composeArgs = { topic, styleHint, baseMessage };
+        return { message: 'Olá, turma! Passando para avisar sobre nossa aula de quarta-feira.' };
+      },
+    }),
+  ]);
+
+  const result = await new AgentOrchestrator(provider, registry).run({
+    text: 'Crie um aviso de aula para a turma de designer de quarta-feira.',
+    context,
+  });
+
+  assert.equal(result.kind, 'completed');
+  assert.deepEqual(composeArgs, {
+    topic: 'Aviso de aula para a turma de quarta-feira',
+    styleHint: null,
+    baseMessage: null,
+  });
+  assert.deepEqual(result.toolResults.map((item) => item.toolName), ['find_classes', 'compose_notice']);
+  assert.equal(store.rows.length, 0);
+});
 
 test('modelo 2 de Design só cria handoff depois da aprovação exata', async () => {
   const store = new MemoryScheduleStore();
@@ -203,19 +326,24 @@ test('agente consulta o ACK antes de afirmar que o celular agendou', async () =>
 
 test('compose_notice devolve um rascunho escrito pela IA sem enviar nada', async () => {
   const store = new MemoryScheduleStore();
+  let composeArgs: { styleHint: string | null; baseMessage: string | null } | null = null;
   const registry = new ToolRegistry(createNoticeScheduleTools(catalog, store, {
-    compose: async () => ({ message: 'Amanhã não teremos aula. Até breve!' }),
+    compose: async ({ styleHint, baseMessage }) => {
+      composeArgs = { styleHint, baseMessage };
+      return { message: 'Amanhã não teremos aula. Até breve!' };
+    },
   }));
   const result = await registry.execute({
     callId: 'compose-1',
     name: 'compose_notice',
-    arguments: { classId: design.id, topic: 'amanhã não tem aula', styleHint: null, baseMessage: null },
+    arguments: { classId: design.id, topic: 'amanhã não tem aula', styleHint: '', baseMessage: '' },
   }, context);
   assert.equal(result.status, 'success');
   const output = result.output as Record<string, unknown>;
   assert.equal(output.composed, true);
   assert.equal(output.recipient, 'Design Gráfico — Turma');
   assert.equal(output.body, 'Amanhã não teremos aula. Até breve!');
+  assert.deepEqual(composeArgs, { styleHint: null, baseMessage: null });
   assert.equal(store.rows.length, 0);
 });
 

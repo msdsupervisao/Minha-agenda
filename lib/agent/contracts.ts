@@ -63,7 +63,7 @@ export type AgentTool<TInput extends JsonObject = JsonObject> = {
   description: string;
   risk: ToolRisk | ((input: TInput, context: AgentExecutionContext) => ToolRisk);
   inputSchema: z.ZodType<TInput>;
-  normalizeArguments?(input: JsonObject): JsonObject;
+  normalizeArguments?(input: JsonObject, context?: AgentExecutionContext): JsonObject;
   execute(input: TInput, context: AgentExecutionContext): Promise<JsonValue>;
   verify?(
     output: JsonValue,

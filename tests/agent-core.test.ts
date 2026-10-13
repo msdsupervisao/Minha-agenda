@@ -306,6 +306,9 @@ test('instruções centrais exigem intenção, ferramentas e verificação', () 
   assert.match(prompt, /verified=true/);
   assert.match(prompt, /Hora local atual: 2026-08-26T20:30:00/);
   assert.match(prompt, /scheduleKind=delay_minutes/);
+  assert.match(prompt, /número de modelo explicitamente pedido/);
+  assert.match(prompt, /não invente data, horário de envio ou agendamento/);
+  assert.match(prompt, /nunca substitua isso por um modelo salvo/);
   assert.match(prompt, /<contexto_atual>/);
   assert.doesNotMatch(prompt, /comando exato/);
 });
@@ -314,7 +317,7 @@ test('instruções tratam lembrete de aviso de aula como fluxo de WhatsApp', () 
   const instructions = buildAgentInstructions({ text: 'Me lembre de mandar aviso de aula.', context });
   assert.match(instructions, /nunca use create_reminder/i);
   assert.match(instructions, /fluxo de turmas/i);
-  assert.match(instructions, /turma ou modelo não estiverem claros/i);
+  assert.match(instructions, /se a turma estiver ambígua/i);
 });
 
 test('uma leitura bem-sucedida não encobre falha em outra ferramenta ou outra consulta', () => {
