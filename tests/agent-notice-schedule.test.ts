@@ -54,6 +54,22 @@ test('normaliza “amanhã às 14 horas” para data local usando o fuso do turn
   assert.equal(result.delayMinutes, null);
 });
 
+test('texto composto zera o modelNumber que o modelo insiste em mandar', () => {
+  const result = normalizeNoticeScheduleArguments({
+    classId: design.id,
+    bodySource: 'composed',
+    modelNumber: 1,
+    recipientName: design.whatsappGroup!,
+    body: 'Pessoal, teremos aula. Confirmado!',
+    scheduleKind: 'local_datetime',
+    localDueAt: '2026-08-27T14:00',
+    delayMinutes: null,
+  }, context);
+
+  assert.equal(result.modelNumber, null);
+  assert.equal(result.bodySource, 'composed');
+});
+
 test('pedido real de aviso para amanhã às 14h chega à confirmação com horário correto', async () => {
   const store = new MemoryScheduleStore();
   let providerCalls = 0;

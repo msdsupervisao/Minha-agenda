@@ -224,7 +224,9 @@ export function normalizeNoticeScheduleArguments(input: JsonObject, context?: Ag
   if (!normalized.bodySource) {
     normalized.bodySource = typeof normalized.modelNumber === 'number' ? 'model' : 'composed';
   }
-  if (normalized.bodySource === 'composed' && normalized.modelNumber === undefined) {
+  // Weak models keep sending a modelNumber (0, 1, ...) even for composed text, where it must be
+  // null. Force it so a technical slip never blocks the schedule; the composed body is the source.
+  if (normalized.bodySource === 'composed' && normalized.modelNumber !== null) {
     normalized.modelNumber = null;
   }
   if (!normalized.scheduleKind) {
@@ -246,8 +248,11 @@ export function normalizeNoticeScheduleArguments(input: JsonObject, context?: Ag
 
 export function normalizeComposeNoticeArguments(input: JsonObject): JsonObject {
   const normalized = { ...input };
+  // Weak models fill optional fields with "" or the literal string "null"/"none" instead of a
+  // real null; treat those as absent so they never pollute the composed notice.
   for (const key of ['styleHint', 'baseMessage'] as const) {
-    if (typeof normalized[key] === 'string' && normalized[key].trim() === '') normalized[key] = null;
+    const value = normalized[key];
+    if (typeof value === 'string' && ['', 'null', 'none', 'undefined'].includes(value.trim().toLowerCase())) normalized[key] = null;
   }
   return normalized;
 }
