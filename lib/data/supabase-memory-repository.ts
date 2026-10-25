@@ -181,12 +181,14 @@ export const NOTIFICATION_DEFAULTS: Record<'reminder' | 'task' | 'event', Notifi
 
 export function notificationFromMeta(value: unknown, kind: 'reminder' | 'task' | 'event'): NotificationPreferences {
   const source = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
-  const alerts = Array.isArray(source.alerts)
+  const parsedAlerts = Array.isArray(source.alerts)
     ? [...new Set(source.alerts.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 60 * 24 * 30))].sort((a, b) => b - a)
-    : NOTIFICATION_DEFAULTS[kind].alerts;
-  const channels = Array.isArray(source.channels)
+    : [];
+  const alerts = parsedAlerts.length ? parsedAlerts : NOTIFICATION_DEFAULTS[kind].alerts;
+  const parsedChannels = Array.isArray(source.channels)
     ? [...new Set(source.channels.filter((channel): channel is NotificationChannel => channel === 'push' || channel === 'whatsapp'))]
-    : NOTIFICATION_DEFAULTS[kind].channels;
+    : [];
+  const channels = parsedChannels.length ? parsedChannels : NOTIFICATION_DEFAULTS[kind].channels;
   return { alerts, channels };
 }
 

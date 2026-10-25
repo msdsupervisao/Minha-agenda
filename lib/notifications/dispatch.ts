@@ -22,6 +22,14 @@ export async function sendNotification(notification: DueNotification, target: Di
   return { ok: result.ok, skipped: result.skipped, goneSubscriptionIds: [], error: result.error };
 }
 
+export function pushFallbackNotification(notification: DueNotification): DueNotification {
+  return {
+    ...notification,
+    channel: 'push',
+    dedupeKey: `${notification.itemType}:${notification.itemId}:${notification.anchorAt}:${notification.offsetMinutes}:push`,
+  };
+}
+
 function formatAnchor(iso: string, timezone: string) {
   return new Intl.DateTimeFormat('pt-BR', { timeZone: timezone, dateStyle: 'short', timeStyle: 'short' }).format(new Date(iso));
 }

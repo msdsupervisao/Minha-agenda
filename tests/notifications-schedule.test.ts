@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { dueNotifications, type NotifiableItem } from '../lib/notifications/schedule';
+import { pushFallbackNotification } from '../lib/notifications/dispatch';
+import { isStalePending } from '../lib/notifications/delivery';
 
 const event: NotifiableItem = {
   itemType: 'event', id: 'event-1', userId: 'user-1', title: 'Consulta',
@@ -31,4 +33,19 @@ test('schedule: não libera aviso futuro e diferencia ocorrências reagendadas',
 
 test('schedule: valida fuso IANA antes de calcular', () => {
   assert.throws(() => dueNotifications(event, 'fuso-inexistente', new Date()), /Fuso horário inválido/);
+});
+
+test('delivery: pending antigo pode ser retomado, pending recente não', () => {
+  const now = new Date('2026-10-25T15:00:00.000Z');
+  assert.equal(isStalePending('2026-10-25T14:49:59.000Z', now), true);
+  assert.equal(isStalePending('2026-10-25T14:55:00.000Z', now), false);
+  assert.equal(isStalePending(null, now), true);
+});
+
+test('delivery: falha WhatsApp gera uma chave de fallback push independente', () => {
+  const whatsapp = dueNotifications({ ...event, channels: ['whatsapp'] }, 'America/Cuiaba', new Date('2026-10-25T14:00:00.000Z'))[0];
+  const push = pushFallbackNotification(whatsapp);
+  assert.equal(push.channel, 'push');
+  assert.match(push.dedupeKey, /:push$/);
+  assert.notEqual(push.dedupeKey, whatsapp.dedupeKey);
 });

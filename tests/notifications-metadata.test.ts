@@ -14,6 +14,8 @@ test('metadata: defaults preservam lembretes legados e dão 1 hora a eventos/tar
 test('metadata: canal inválido ou lista vazia cai em push', () => {
   assert.deepEqual(channelList(['email', 'push']), ['push']);
   assert.deepEqual(channelList([]), ['push']);
+  assert.deepEqual(notificationFromMeta({ alerts: ['invalid'], channels: ['email'] }, 'reminder'), { alerts: [0], channels: ['push'] });
+  assert.deepEqual(notificationFromMeta({ alerts: [], channels: [] }, 'event'), { alerts: [60], channels: ['push'] });
 });
 
 test('migration: deliveries têm chave única por disparo e status observável', () => {
