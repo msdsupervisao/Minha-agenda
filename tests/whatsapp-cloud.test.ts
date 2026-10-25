@@ -4,6 +4,7 @@ import { volatileMemoryRepository, emptyMemory } from '../lib/assistant/memory';
 import type { Message } from '../lib/assistant/types';
 import {
   whatsappCloudConfig, whatsappSendAllowed, buildWhatsAppTextPayload,
+  buildWhatsAppTemplatePayload,
   verifyWebhookChallenge, parseWhatsAppWebhook, normalizePhone, CloudWhatsAppService,
 } from '../lib/assistant/whatsapp-cloud';
 
@@ -36,6 +37,12 @@ test('normalizePhone e payload de texto', () => {
   assert.equal(p.to, '5511999990000');
   assert.equal(p.text.body, 'Oi');
   assert.equal(p.messaging_product, 'whatsapp');
+});
+
+test('payload de template carrega título e horário como parâmetros', () => {
+  const payload = buildWhatsAppTemplatePayload('+55 (11) 99999-0000', 'lembrete_agenda', ['Consulta', '25/10/2026 12:00']);
+  assert.equal(payload.type, 'template');
+  assert.deepEqual(payload.template.components[0].parameters.map((item) => item.text), ['Consulta', '25/10/2026 12:00']);
 });
 
 test('verifyWebhookChallenge: token certo devolve challenge, errado nega', () => {

@@ -57,7 +57,6 @@ export function startVoiceSession(recognition: Recognition, callbacks: {
   let done = false;
   let started = false;
   let speaking = false;
-  let startup: ReturnType<typeof setTimeout>;
   let silence: ReturnType<typeof setTimeout>;
   let deadline: ReturnType<typeof setTimeout>;
   let watchdog: ReturnType<typeof setTimeout> | undefined;
@@ -133,7 +132,7 @@ export function startVoiceSession(recognition: Recognition, callbacks: {
     else if (event.error !== 'no-speech') fail();
     // A normal no-speech event is followed by onend; keep the bounded session alive.
   };
-  startup = setTimeout(fail, STARTUP_MS);
+  const startup = setTimeout(fail, STARTUP_MS);
   try { recognition.start(); } catch { fail(); }
   return {
     stop,

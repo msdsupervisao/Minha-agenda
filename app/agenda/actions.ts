@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { getScreenContext, wallTimeToUtcIso } from '@/lib/data/screen-queries';
 import { resolveTimezone } from '@/lib/data/server-timezone';
 import type { AgendaKind } from '@/lib/data/agenda';
+import type { NotificationChannel } from '@/lib/assistant/types';
 
 export type ActionResult = { ok: boolean; error?: string };
 
@@ -19,26 +20,33 @@ function refresh() {
 export async function updateAgendaItem(
   kind: AgendaKind,
   id: string,
-  input: { title: string; at: string | null; endsAt?: string | null },
+  input: { title: string; at: string | null; endsAt?: string | null; alerts?: number[]; channels?: NotificationChannel[] },
 ): Promise<ActionResult> {
   const ctx = await getScreenContext();
   if (!ctx) return { ok: false, error: 'Sessão expirada.' };
   const title = input.title.trim();
   if (!title) return { ok: false, error: 'O título não pode ficar vazio.' };
   const timezone = await resolveTimezone();
+  const existing = await ctx.client.from(TABLE[kind]).select('metadata').eq('id', id).eq('user_id', ctx.userId).is('deleted_at', null).maybeSingle();
+  if (existing.error || !existing.data) return { ok: false, error: 'Não foi possível carregar o item.' };
+  const existingMetadata = existing.data.metadata && typeof existing.data.metadata === 'object' && !Array.isArray(existing.data.metadata)
+    ? existing.data.metadata as Record<string, unknown>
+    : {};
 
   let patch: Record<string, unknown>;
+  const alerts = input.alerts === undefined ? (kind === 'reminder' ? [0] : [60]) : normalizeAlerts(input.alerts);
+  const channels = input.channels === undefined ? ['push'] : normalizeChannels(input.channels);
   if (kind === 'reminder') {
     if (!input.at) return { ok: false, error: 'Informe a data e a hora do lembrete.' };
-    patch = { title, due_at: wallTimeToUtcIso(input.at, timezone) };
+    patch = { title, due_at: wallTimeToUtcIso(input.at, timezone), notified_at: null, notification_status: 'pending', metadata: { ...existingMetadata, alerts, channels } };
   } else if (kind === 'task') {
-    patch = { title, due_at: input.at ? wallTimeToUtcIso(input.at, timezone) : null };
+    patch = { title, due_at: input.at ? wallTimeToUtcIso(input.at, timezone) : null, metadata: { ...existingMetadata, alerts, channels } };
   } else {
     if (!input.at) return { ok: false, error: 'Informe a data e a hora do compromisso.' };
     const startsAt = wallTimeToUtcIso(input.at, timezone);
     const endsAt = input.endsAt ? wallTimeToUtcIso(input.endsAt, timezone) : null;
     if (endsAt && endsAt < startsAt) return { ok: false, error: 'O término não pode ser antes do início.' };
-    patch = { title, starts_at: startsAt, ends_at: endsAt };
+    patch = { title, starts_at: startsAt, ends_at: endsAt, metadata: { ...existingMetadata, alerts, channels } };
   }
 
   const { error } = await ctx.client.from(TABLE[kind]).update(patch)
@@ -46,6 +54,14 @@ export async function updateAgendaItem(
   if (error) return { ok: false, error: 'Não foi possível salvar.' };
   refresh();
   return { ok: true };
+}
+
+function normalizeAlerts(value: number[] | undefined) {
+  return [...new Set((value || []).map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 60 * 24 * 30))].sort((a, b) => b - a);
+}
+
+function normalizeChannels(value: NotificationChannel[] | undefined): NotificationChannel[] {
+  return [...new Set((value || []).filter((channel): channel is NotificationChannel => channel === 'push' || channel === 'whatsapp'))];
 }
 
 export async function setAgendaDone(kind: AgendaKind, id: string, done: boolean): Promise<ActionResult> {

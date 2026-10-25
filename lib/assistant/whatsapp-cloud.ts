@@ -40,6 +40,43 @@ export function buildWhatsAppTextPayload(phone: string, body: string) {
   return { messaging_product: 'whatsapp', recipient_type: 'individual', to: normalizePhone(phone), type: 'text', text: { preview_url: false, body } };
 }
 
+export function buildWhatsAppTemplatePayload(phone: string, templateName: string, parameters: string[], languageCode = 'pt_BR') {
+  return {
+    messaging_product: 'whatsapp', recipient_type: 'individual', to: normalizePhone(phone), type: 'template',
+    template: { name: templateName, language: { code: languageCode }, components: [{ type: 'body', parameters: parameters.map((text) => ({ type: 'text', text })) }] },
+  };
+}
+
+export type CloudNotificationResult = { ok: boolean; skipped?: boolean; error?: string; providerMessageId?: string | null };
+
+/** Envia um aviso transacional, escolhendo texto livre ou template pela janela da Meta. */
+export async function sendCloudWhatsAppNotification(
+  contact: Pick<Contact, 'phone' | 'whatsappOptIn' | 'lastInboundAt'> | null,
+  body: string,
+  now = new Date(),
+  fetchImpl: typeof fetch = fetch,
+  templateParameters: string[] = [body],
+): Promise<CloudNotificationResult> {
+  if (!contact?.phone || !contact.whatsappOptIn) return { ok: false, skipped: true, error: 'whatsapp_opt_in_missing' };
+  const config = whatsappCloudConfig();
+  if (!config) return { ok: false, skipped: true, error: 'whatsapp_not_configured' };
+  const withinWindow = Boolean(contact.lastInboundAt && now.getTime() - new Date(contact.lastInboundAt).getTime() <= 24 * 60 * 60 * 1000);
+  const templateName = process.env.WHATSAPP_REMINDER_TEMPLATE_NAME?.trim();
+  if (!withinWindow && !templateName) return { ok: false, skipped: true, error: 'whatsapp_template_missing' };
+  const payload = withinWindow
+    ? buildWhatsAppTextPayload(contact.phone, body)
+    : buildWhatsAppTemplatePayload(contact.phone, templateName!, templateParameters, process.env.WHATSAPP_REMINDER_TEMPLATE_LANGUAGE?.trim() || 'pt_BR');
+  const url = `https://graph.facebook.com/${config.graphVersion || GRAPH_VERSION}/${config.phoneNumberId}/messages`;
+  try {
+    const response = await fetchImpl(url, { method: 'POST', headers: { Authorization: `Bearer ${config.accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!response.ok) return { ok: false, error: `whatsapp_http_${response.status}` };
+    const json = await response.json().catch(() => ({} as Record<string, unknown>));
+    return { ok: true, providerMessageId: extractProviderMessageId(json) };
+  } catch {
+    return { ok: false, error: 'whatsapp_network_error' };
+  }
+}
+
 /** Verificação do webhook (GET da Meta): devolve o challenge se o token bater. */
 export function verifyWebhookChallenge(params: URLSearchParams, verifyToken: string): { ok: boolean; challenge: string | null } {
   const mode = params.get('hub.mode');
