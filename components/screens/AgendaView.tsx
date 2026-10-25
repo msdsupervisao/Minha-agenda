@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
 import type { AgendaGroup, AgendaItem, AgendaKind } from '@/lib/data/agenda';
+import type { NotificationChannel } from '@/lib/assistant/types';
 import { formatTime, toDatetimeLocal } from '@/lib/format';
 import { deleteAgendaItem, restoreAgendaItem, setAgendaDone, updateAgendaItem } from '@/app/agenda/actions';
 import styles from './Screens.module.css';
@@ -11,19 +12,20 @@ import styles from './Screens.module.css';
 const ICON: Record<AgendaKind, string> = { reminder: '◷', task: '✓', event: '▦' };
 const KIND_LABEL: Record<AgendaKind, string> = { reminder: 'lembrete', task: 'tarefa', event: 'compromisso' };
 const RECURRENCE_LABEL = { daily: 'todo dia', weekly: 'toda semana', monthly: 'todo mês' } as const;
+const ALERT_OPTIONS = [{ value: 0, label: 'na hora' }, { value: 15, label: '15 min antes' }, { value: 60, label: '1 h antes' }, { value: 1440, label: '1 dia antes' }];
 
 export default function AgendaView({ groups, loadError, tz }: { groups: AgendaGroup[]; loadError?: boolean; tz?: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState({ title: '', at: '', endsAt: '' });
+  const [form, setForm] = useState<{ title: string; at: string; endsAt: string; alerts: number[]; channels: NotificationChannel[] }>({ title: '', at: '', endsAt: '', alerts: [], channels: ['push'] });
   const [error, setError] = useState<string | null>(null);
   const [undo, setUndo] = useState<{ kind: AgendaKind; id: string } | null>(null);
 
   function startEdit(item: AgendaItem) {
     setError(null);
     setEditingId(item.id);
-    setForm({ title: item.title, at: item.at ? toDatetimeLocal(item.at, tz) : '', endsAt: item.endsAt ? toDatetimeLocal(item.endsAt, tz) : '' });
+    setForm({ title: item.title, at: item.at ? toDatetimeLocal(item.at, tz) : '', endsAt: item.endsAt ? toDatetimeLocal(item.endsAt, tz) : '', alerts: item.alerts, channels: item.channels });
   }
 
   function save(item: AgendaItem) {
@@ -33,6 +35,8 @@ export default function AgendaView({ groups, loadError, tz }: { groups: AgendaGr
         title: form.title,
         at: form.at || null,
         endsAt: item.kind === 'event' ? (form.endsAt || null) : null,
+        alerts: form.alerts,
+        channels: form.channels,
       });
       if (!result.ok) { setError(result.error || 'Não foi possível salvar.'); return; }
       setEditingId(null);
@@ -136,6 +140,36 @@ export default function AgendaView({ groups, loadError, tz }: { groups: AgendaGr
                             <input id={`end-${item.id}`} type="datetime-local" value={form.endsAt} onChange={(e) => setForm({ ...form, endsAt: e.target.value })} />
                           </div>
                         )}
+                      </div>
+                      <div className={styles.field}>
+                        <span className={styles.fieldLabel}>Avisar</span>
+                        <div className={styles.checkGrid}>
+                          {ALERT_OPTIONS.map((option) => (
+                            <label key={option.value} className={styles.checkLabel}>
+                              <input
+                                type="checkbox"
+                                checked={form.alerts.includes(option.value)}
+                                onChange={(e) => setForm({ ...form, alerts: e.target.checked ? [...new Set([...form.alerts, option.value])] : form.alerts.filter((value) => value !== option.value) })}
+                              />
+                              {option.label}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div className={styles.field}>
+                        <span className={styles.fieldLabel}>Canais</span>
+                        <div className={styles.checkGrid}>
+                          {(['push', 'whatsapp'] as NotificationChannel[]).map((channel) => (
+                            <label key={channel} className={styles.checkLabel}>
+                              <input
+                                type="checkbox"
+                                checked={form.channels.includes(channel)}
+                                onChange={(e) => setForm({ ...form, channels: e.target.checked ? [...new Set([...form.channels, channel])] : form.channels.filter((value) => value !== channel) })}
+                              />
+                              {channel === 'push' ? 'notificação push' : 'WhatsApp'}
+                            </label>
+                          ))}
+                        </div>
                       </div>
                       <div className={styles.formActions}>
                         <button type="button" className={`${styles.btn} ${styles.btnGhost}`} onClick={() => setEditingId(null)} disabled={pending}>Cancelar</button>

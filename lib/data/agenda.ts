@@ -1,4 +1,5 @@
 import type { CalendarEvent, Recurrence, Reminder, Task } from '@/lib/assistant/types';
+import type { NotificationChannel } from '@/lib/assistant/types';
 import { DISPLAY_TZ } from '@/lib/format';
 
 export type AgendaKind = 'reminder' | 'task' | 'event';
@@ -11,13 +12,15 @@ export type AgendaItem = {
   endsAt: string | null;
   done: boolean;
   recurrence?: Recurrence | null;
+  alerts: number[];
+  channels: NotificationChannel[];
 };
 
 export function buildAgendaItems(reminders: Reminder[], tasks: Task[], events: CalendarEvent[]): AgendaItem[] {
   const items: AgendaItem[] = [
-    ...reminders.map((r): AgendaItem => ({ id: r.id, kind: 'reminder', title: r.title, at: r.dueAt, endsAt: null, done: r.notificationStatus === 'delivered', recurrence: r.recurrence ?? null })),
-    ...tasks.map((t): AgendaItem => ({ id: t.id, kind: 'task', title: t.title, at: t.dueAt, endsAt: null, done: t.status === 'done' })),
-    ...events.map((e): AgendaItem => ({ id: e.id, kind: 'event', title: e.title, at: e.startsAt, endsAt: e.endsAt, done: false })),
+    ...reminders.map((r): AgendaItem => ({ id: r.id, kind: 'reminder', title: r.title, at: r.dueAt, endsAt: null, done: r.notificationStatus === 'delivered', recurrence: r.recurrence ?? null, alerts: r.notification?.alerts || [0], channels: r.notification?.channels || ['push'] })),
+    ...tasks.map((t): AgendaItem => ({ id: t.id, kind: 'task', title: t.title, at: t.dueAt, endsAt: null, done: t.status === 'done', alerts: t.notification?.alerts || [60], channels: t.notification?.channels || ['push'] })),
+    ...events.map((e): AgendaItem => ({ id: e.id, kind: 'event', title: e.title, at: e.startsAt, endsAt: e.endsAt, done: false, alerts: e.notification?.alerts || [60], channels: e.notification?.channels || ['push'] })),
   ];
   return items.sort(compareByAt);
 }

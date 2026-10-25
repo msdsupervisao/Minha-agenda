@@ -19,6 +19,11 @@ export type Intent =
 export type EntityType = 'contact' | 'expense' | 'task' | 'reminder' | 'event' | 'note' | 'message';
 export type Source = 'voice' | 'text';
 export type Recurrence = 'daily' | 'weekly' | 'monthly';
+export type NotificationChannel = 'push' | 'whatsapp';
+export type NotificationPreferences = {
+  alerts: number[];
+  channels: NotificationChannel[];
+};
 export type DateRange = 'today' | 'tomorrow' | 'week' | 'next_week' | 'month' | 'next_month' | 'all';
 export type AiProviderName = 'openai' | 'omniroute' | 'local';
 
@@ -58,6 +63,7 @@ export type Task = BaseEntity & {
   status: 'open' | 'done';
   dueAt: string | null;
   contactId: string | null;
+  notification?: NotificationPreferences;
 };
 
 export type Reminder = BaseEntity & {
@@ -66,6 +72,7 @@ export type Reminder = BaseEntity & {
   contactId: string | null;
   notificationStatus: 'pending' | 'delivered';
   recurrence?: Recurrence | null;
+  notification?: NotificationPreferences;
 };
 
 export type CalendarEvent = BaseEntity & {
@@ -73,6 +80,7 @@ export type CalendarEvent = BaseEntity & {
   startsAt: string;
   endsAt: string | null;
   contactId: string | null;
+  notification?: NotificationPreferences;
 };
 
 export type Note = BaseEntity & { content: string; contactId: string | null };

@@ -15,6 +15,11 @@ export function reminderPushPayload(title: string, id: string): PushPayload {
   return { title: 'Lembrete', body: title, url: '/agenda', tag: `rem-${id}` };
 }
 
+export function notificationPushPayload(kind: 'reminder' | 'event' | 'task', title: string, id: string, offsetMinutes: number): PushPayload {
+  const labels = { reminder: 'Lembrete', event: 'Evento', task: 'Tarefa' } as const;
+  return { title: labels[kind], body: title, url: '/agenda', tag: `notification-${kind}-${id}-${offsetMinutes}` };
+}
+
 export function isDue(dueAtIso: string, now: Date = new Date()) {
   const due = new Date(dueAtIso).getTime();
   return Number.isFinite(due) && due <= now.getTime();

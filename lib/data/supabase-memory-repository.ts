@@ -3,7 +3,7 @@ import { emptyMemory } from '@/lib/assistant/memory';
 import { recurrenceFromMeta } from '@/lib/assistant/recurrence';
 import type {
   ActionLog, CalendarEvent, Contact, Expense, Message, Note, OperationalMemory,
-  PendingQuestion, Reminder, Task,
+  PendingQuestion, Reminder, Task, NotificationChannel, NotificationPreferences,
 } from '@/lib/assistant/types';
 import type { ServerInterpretationResult } from '@/lib/assistant/ai-runtime';
 
@@ -145,9 +145,9 @@ export function diffRecords<T extends { id: string }>(before: T[], after: T[]) {
 
 function contactToRow(item: Contact, userId: string) { return { id: item.id, user_id: userId, name: item.name, aliases: item.aliases, role: item.role, class_name: item.className, phone: item.phone, whatsapp_opt_in: item.whatsappOptIn, last_inbound_at: item.lastInboundAt, created_at: item.createdAt, updated_at: item.updatedAt, metadata: {} }; }
 function expenseToRow(item: Expense, userId: string) { return { id: item.id, user_id: userId, amount: item.amount, currency: item.currency, category: item.category, occurred_at: item.occurredAt, source: item.source, created_at: item.createdAt, updated_at: item.updatedAt, metadata: {} }; }
-function taskToRow(item: Task, userId: string) { return { id: item.id, user_id: userId, contact_id: item.contactId, title: item.title, status: item.status, due_at: item.dueAt, created_at: item.createdAt, updated_at: item.updatedAt, metadata: {} }; }
-function reminderToRow(item: Reminder, userId: string) { return { id: item.id, user_id: userId, contact_id: item.contactId, title: item.title, due_at: item.dueAt, notification_status: item.notificationStatus, created_at: item.createdAt, updated_at: item.updatedAt, metadata: item.recurrence ? { recurrence: item.recurrence } : {} }; }
-function eventToRow(item: CalendarEvent, userId: string) { return { id: item.id, user_id: userId, contact_id: item.contactId, title: item.title, starts_at: item.startsAt, ends_at: item.endsAt, created_at: item.createdAt, updated_at: item.updatedAt, metadata: {} }; }
+function taskToRow(item: Task, userId: string) { return { id: item.id, user_id: userId, contact_id: item.contactId, title: item.title, status: item.status, due_at: item.dueAt, created_at: item.createdAt, updated_at: item.updatedAt, metadata: notificationMeta(item.notification, 'task') }; }
+function reminderToRow(item: Reminder, userId: string) { return { id: item.id, user_id: userId, contact_id: item.contactId, title: item.title, due_at: item.dueAt, notification_status: item.notificationStatus, created_at: item.createdAt, updated_at: item.updatedAt, metadata: { ...(item.recurrence ? { recurrence: item.recurrence } : {}), ...notificationMeta(item.notification, 'reminder') } }; }
+function eventToRow(item: CalendarEvent, userId: string) { return { id: item.id, user_id: userId, contact_id: item.contactId, title: item.title, starts_at: item.startsAt, ends_at: item.endsAt, created_at: item.createdAt, updated_at: item.updatedAt, metadata: notificationMeta(item.notification, 'event') }; }
 function noteToRow(item: Note, userId: string) { return { id: item.id, user_id: userId, contact_id: item.contactId, content: item.content, created_at: item.createdAt, updated_at: item.updatedAt, metadata: {} }; }
 function messageToRow(item: Message, userId: string) { return { id: item.id, user_id: userId, contact_id: item.contactId, channel: item.channel, recipient_name: item.recipientName, body: item.body, status: item.status, requires_template: item.requiresTemplate, provider_message_id: item.providerMessageId, created_at: item.createdAt, updated_at: item.updatedAt, metadata: {} }; }
 function actionLogToRow(item: ActionLog, userId: string) { return { id: item.id, user_id: userId, intent: item.intent, entity_type: item.entityType, entity_id: item.entityId, status: item.undoneAt ? 'undone' : item.status || 'completed', summary: item.summary, source: item.source, reversible: item.reversible, before_data: item.before, after_data: item.after, undone_at: item.undoneAt, created_at: item.createdAt, updated_at: item.undoneAt || item.createdAt, metadata: {} }; }
@@ -155,9 +155,9 @@ function actionLogToRow(item: ActionLog, userId: string) { return { id: item.id,
 function base(row: Record<string, unknown>) { return { id: String(row.id), userId: String(row.user_id), createdAt: String(row.created_at), updatedAt: String(row.updated_at) }; }
 export function contactFromRow(row: Record<string, unknown>): Contact { return { ...base(row), name: String(row.name), aliases: Array.isArray(row.aliases) ? row.aliases.map(String) : [], role: stringOrNull(row.role), className: stringOrNull(row.class_name), phone: stringOrNull(row.phone), whatsappOptIn: Boolean(row.whatsapp_opt_in), lastInboundAt: stringOrNull(row.last_inbound_at) }; }
 export function expenseFromRow(row: Record<string, unknown>): Expense { return { ...base(row), amount: Number(row.amount), currency: 'BRL', category: String(row.category), occurredAt: String(row.occurred_at), source: row.source === 'voice' ? 'voice' : 'text' }; }
-export function taskFromRow(row: Record<string, unknown>): Task { return { ...base(row), title: String(row.title), status: row.status === 'done' ? 'done' : 'open', dueAt: stringOrNull(row.due_at), contactId: stringOrNull(row.contact_id) }; }
-export function reminderFromRow(row: Record<string, unknown>): Reminder { return { ...base(row), title: String(row.title), dueAt: String(row.due_at), contactId: stringOrNull(row.contact_id), notificationStatus: row.notification_status === 'delivered' ? 'delivered' : 'pending', recurrence: recurrenceFromMeta(row.metadata) }; }
-export function eventFromRow(row: Record<string, unknown>): CalendarEvent { return { ...base(row), title: String(row.title), startsAt: String(row.starts_at), endsAt: stringOrNull(row.ends_at), contactId: stringOrNull(row.contact_id) }; }
+export function taskFromRow(row: Record<string, unknown>): Task { return { ...base(row), title: String(row.title), status: row.status === 'done' ? 'done' : 'open', dueAt: stringOrNull(row.due_at), contactId: stringOrNull(row.contact_id), notification: notificationFromMeta(row.metadata, 'task') }; }
+export function reminderFromRow(row: Record<string, unknown>): Reminder { return { ...base(row), title: String(row.title), dueAt: String(row.due_at), contactId: stringOrNull(row.contact_id), notificationStatus: row.notification_status === 'delivered' ? 'delivered' : 'pending', recurrence: recurrenceFromMeta(row.metadata), notification: notificationFromMeta(row.metadata, 'reminder') }; }
+export function eventFromRow(row: Record<string, unknown>): CalendarEvent { return { ...base(row), title: String(row.title), startsAt: String(row.starts_at), endsAt: stringOrNull(row.ends_at), contactId: stringOrNull(row.contact_id), notification: notificationFromMeta(row.metadata, 'event') }; }
 export function noteFromRow(row: Record<string, unknown>): Note { return { ...base(row), content: String(row.content), contactId: stringOrNull(row.contact_id) }; }
 function messageFromRow(row: Record<string, unknown>): Message { const status = ['prepared', 'mock_sent', 'sent', 'failed'].includes(String(row.status)) ? row.status as Message['status'] : 'failed'; return { ...base(row), channel: 'whatsapp', contactId: stringOrNull(row.contact_id), recipientName: String(row.recipient_name), body: String(row.body), status, requiresTemplate: Boolean(row.requires_template), providerMessageId: stringOrNull(row.provider_message_id) }; }
 function actionLogFromRow(row: Record<string, unknown>): ActionLog { return { id: String(row.id), userId: String(row.user_id), intent: String(row.intent) as ActionLog['intent'], entityType: stringOrNull(row.entity_type) as ActionLog['entityType'], entityId: stringOrNull(row.entity_id), summary: String(row.summary), status: actionLogStatus(row.status), createdAt: String(row.created_at), source: row.source === 'voice' ? 'voice' : 'text', reversible: Boolean(row.reversible), undoneAt: stringOrNull(row.undone_at), before: row.before_data ?? null, after: row.after_data ?? null }; }
@@ -172,3 +172,25 @@ function conversationFromJson(value: unknown) {
 }
 function stringOrNull(value: unknown) { return typeof value === 'string' && value.trim() ? value : null; }
 function databaseError(operation: string, table: string, error: { code?: string; message?: string }) { const issue = error.code || 'database_error'; return new Error(`Falha de persistência (${operation}:${table}:${issue}).`); }
+
+export const NOTIFICATION_DEFAULTS: Record<'reminder' | 'task' | 'event', NotificationPreferences> = {
+  reminder: { alerts: [0], channels: ['push'] },
+  task: { alerts: [60], channels: ['push'] },
+  event: { alerts: [60], channels: ['push'] },
+};
+
+export function notificationFromMeta(value: unknown, kind: 'reminder' | 'task' | 'event'): NotificationPreferences {
+  const source = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const alerts = Array.isArray(source.alerts)
+    ? [...new Set(source.alerts.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 60 * 24 * 30))].sort((a, b) => b - a)
+    : NOTIFICATION_DEFAULTS[kind].alerts;
+  const channels = Array.isArray(source.channels)
+    ? [...new Set(source.channels.filter((channel): channel is NotificationChannel => channel === 'push' || channel === 'whatsapp'))]
+    : NOTIFICATION_DEFAULTS[kind].channels;
+  return { alerts, channels };
+}
+
+function notificationMeta(value: NotificationPreferences | undefined, kind: 'reminder' | 'task' | 'event') {
+  const notification = value || NOTIFICATION_DEFAULTS[kind];
+  return { alerts: notification.alerts, channels: notification.channels };
+}
