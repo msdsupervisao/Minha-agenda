@@ -19,7 +19,8 @@ export type Intent =
 export type EntityType = 'contact' | 'expense' | 'task' | 'reminder' | 'event' | 'note' | 'message';
 export type Source = 'voice' | 'text';
 export type Recurrence = 'daily' | 'weekly' | 'monthly';
-export type NotificationChannel = 'push' | 'whatsapp';
+/** 'desktop' = aviso só no PC (Agenda Rápida): o servidor não envia nada nesse caso. */
+export type NotificationChannel = 'push' | 'whatsapp' | 'desktop';
 export type NotificationPreferences = {
   alerts: number[];
   channels: NotificationChannel[];

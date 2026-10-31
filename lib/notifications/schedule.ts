@@ -1,6 +1,9 @@
 import { isValidTimeZone } from '@/lib/data/time';
 import type { NotificationChannel } from '@/lib/assistant/types';
 
+/** Canais que o servidor consegue entregar. 'desktop' nunca gera disparo. */
+export type DeliveryChannel = 'push' | 'whatsapp';
+
 export type NotificationItemType = 'reminder' | 'event' | 'task';
 
 export type NotifiableItem = {
@@ -18,7 +21,7 @@ export type DueNotification = {
   itemId: string;
   userId: string;
   title: string;
-  channel: NotificationChannel;
+  channel: DeliveryChannel;
   offsetMinutes: number;
   anchorAt: string;
   fireAt: string;
