@@ -186,7 +186,7 @@ export function notificationFromMeta(value: unknown, kind: 'reminder' | 'task' |
     : [];
   const alerts = parsedAlerts.length ? parsedAlerts : NOTIFICATION_DEFAULTS[kind].alerts;
   const parsedChannels = Array.isArray(source.channels)
-    ? [...new Set(source.channels.filter((channel): channel is NotificationChannel => channel === 'push' || channel === 'whatsapp'))]
+    ? [...new Set(source.channels.filter((channel): channel is NotificationChannel => channel === 'push' || channel === 'whatsapp' || channel === 'desktop'))]
     : [];
   const channels = parsedChannels.length ? parsedChannels : NOTIFICATION_DEFAULTS[kind].channels;
   return { alerts, channels };

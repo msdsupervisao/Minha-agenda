@@ -50,6 +50,6 @@ async function sendPushNotification(notification: DueNotification, subscriptions
 
 export function channelList(value: unknown): NotificationChannel[] {
   if (!Array.isArray(value)) return ['push'];
-  const channels = [...new Set(value.filter((item): item is NotificationChannel => item === 'push' || item === 'whatsapp'))];
+  const channels = [...new Set(value.filter((item): item is NotificationChannel => item === 'push' || item === 'whatsapp' || item === 'desktop'))];
   return channels.length ? channels : ['push'];
 }
