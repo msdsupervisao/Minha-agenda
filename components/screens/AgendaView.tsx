@@ -11,7 +11,7 @@ import styles from './Screens.module.css';
 
 const ICON: Record<AgendaKind, string> = { reminder: '◷', task: '✓', event: '▦' };
 const KIND_LABEL: Record<AgendaKind, string> = { reminder: 'lembrete', task: 'tarefa', event: 'compromisso' };
-const RECURRENCE_LABEL = { daily: 'todo dia', weekly: 'toda semana', monthly: 'todo mês' } as const;
+const RECURRENCE_LABEL = { daily: 'todo dia', weekly: 'toda semana', monthly: 'todo mes' } as const;
 const ALERT_OPTIONS = [{ value: 0, label: 'na hora' }, { value: 15, label: '15 min antes' }, { value: 60, label: '1 h antes' }, { value: 1440, label: '1 dia antes' }];
 
 export default function AgendaView({ groups, loadError, tz }: { groups: AgendaGroup[]; loadError?: boolean; tz?: string }) {
@@ -38,7 +38,7 @@ export default function AgendaView({ groups, loadError, tz }: { groups: AgendaGr
         alerts: form.alerts,
         channels: form.channels,
       });
-      if (!result.ok) { setError(result.error || 'Não foi possível salvar.'); return; }
+      if (!result.ok) { setError(result.error || 'Nao foi possivel salvar.'); return; }
       setEditingId(null);
       router.refresh();
     });
@@ -48,7 +48,7 @@ export default function AgendaView({ groups, loadError, tz }: { groups: AgendaGr
     setError(null);
     startTransition(async () => {
       const result = await setAgendaDone(item.kind, item.id, !item.done);
-      if (!result.ok) { setError(result.error || 'Não foi possível atualizar.'); return; }
+      if (!result.ok) { setError(result.error || 'Nao foi possivel atualizar.'); return; }
       router.refresh();
     });
   }
@@ -57,7 +57,7 @@ export default function AgendaView({ groups, loadError, tz }: { groups: AgendaGr
     setError(null);
     startTransition(async () => {
       const result = await deleteAgendaItem(item.kind, item.id);
-      if (!result.ok) { setError(result.error || 'Não foi possível excluir.'); return; }
+      if (!result.ok) { setError(result.error || 'Nao foi possivel excluir.'); return; }
       setEditingId(null);
       setUndo({ kind: item.kind, id: item.id });
       router.refresh();
@@ -69,7 +69,7 @@ export default function AgendaView({ groups, loadError, tz }: { groups: AgendaGr
     const target = undo;
     startTransition(async () => {
       const result = await restoreAgendaItem(target.kind, target.id);
-      if (!result.ok) { setError(result.error || 'Não foi possível restaurar.'); return; }
+      if (!result.ok) { setError(result.error || 'Nao foi possivel restaurar.'); return; }
       setUndo(null);
       router.refresh();
     });
@@ -82,106 +82,109 @@ export default function AgendaView({ groups, loadError, tz }: { groups: AgendaGr
       {error && <div className={styles.error}>{error}</div>}
       {undo && (
         <div className={styles.toast}>
-          <span>Item excluído.</span>
+          <span>Item excluido.</span>
           <button type="button" onClick={undoDelete} disabled={pending}>Desfazer</button>
         </div>
       )}
 
       {loadError ? (
-        <div className={styles.error}>Não foi possível carregar sua agenda. Verifique a conexão e recarregue.</div>
+        <div className={styles.error}>Nao foi possivel carregar sua agenda. Verifique a conexao e recarregue.</div>
       ) : isEmpty ? (
         <div className={styles.empty}>
-          <span className={styles.emptyIcon}>◷</span>
+          <span className={styles.emptyIcon}>{'◷'}</span>
           <p>Nada na agenda ainda.</p>
-          <small>Peça ao assistente algo como “me lembra amanhã às 9 de falar com o João” e aparece aqui.</small>
-          <Link href="/" className={`${styles.btn} ${styles.btnPrimary}`}>Ir ao assistente</Link>
+          <small>Abra o assistente e fale: &quot;me lembra amanha as 9 de falar com o Joao&quot;</small>
+          <Link href="/" className={`${styles.btn} ${styles.btnPrimary}`}>Abrir assistente</Link>
         </div>
       ) : (
-        groups.map((group) => (
-          <div key={group.key}>
-            <p className={`${styles.sectionTitle} ${group.key === 'late' ? styles.attention : ''}`}>{group.label}</p>
-            <ul className={styles.list}>
-              {group.items.map((item) => (
-                <li key={`${item.kind}-${item.id}`} className={styles.item}>
-                  <div className={styles.itemRow}>
-                    <span className={styles.itemIcon}>{ICON[item.kind]}</span>
-                    <div className={styles.itemMain}>
-                      <span className={`${styles.itemTitle} ${item.done ? styles.done : ''}`}>{item.title}</span>
-                      <div className={styles.itemMeta}>
-                        {KIND_LABEL[item.kind]}{item.at ? ` · ${formatTime(item.at, tz)}` : ''}
-                        {item.recurrence && <span className={`${styles.badge} ${styles.badgeRepeat}`}>🔁 {RECURRENCE_LABEL[item.recurrence]}</span>}
-                        {group.key === 'late' && <span className={`${styles.badge} ${styles.badgeLate}`}>atrasado</span>}
-                        {item.done && <span className={`${styles.badge} ${styles.badgeDone}`}>concluído</span>}
-                      </div>
-                    </div>
-                    <div className={styles.itemActions}>
-                      {item.kind !== 'event' && (
-                        <button type="button" className={`${styles.iconBtn} ${item.done ? styles.done : ''}`} aria-label={item.done ? 'Reabrir' : 'Concluir'} onClick={() => toggleDone(item)} disabled={pending}>✓</button>
-                      )}
-                      <button type="button" className={styles.iconBtn} aria-label="Editar" onClick={() => (editingId === item.id ? setEditingId(null) : startEdit(item))}>✎</button>
-                      <button type="button" className={`${styles.iconBtn} ${styles.danger}`} aria-label="Excluir" onClick={() => remove(item)} disabled={pending}>✕</button>
-                    </div>
-                  </div>
-
-                  {editingId === item.id && (
-                    <div className={styles.edit}>
-                      <div className={styles.field}>
-                        <label htmlFor={`title-${item.id}`}>Título</label>
-                        <input id={`title-${item.id}`} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-                      </div>
-                      <div className={item.kind === 'event' ? styles.grid2 : styles.field}>
-                        <div className={styles.field}>
-                          <label htmlFor={`at-${item.id}`}>{item.kind === 'task' ? 'Data e hora (opcional)' : 'Data e hora'}</label>
-                          <input id={`at-${item.id}`} type="datetime-local" value={form.at} onChange={(e) => setForm({ ...form, at: e.target.value })} />
+        <>
+          <Link href="/" className={`${styles.btn} ${styles.btnPrimary}`} style={{ textAlign: 'center', textDecoration: 'none' }}>+ Novo lembrete</Link>
+          {groups.map((group) => (
+            <div key={group.key}>
+              <p className={`${styles.sectionTitle} ${group.key === 'late' ? styles.attention : ''}`}>{group.label}</p>
+              <ul className={styles.list}>
+                {group.items.map((item) => (
+                  <li key={`${item.kind}-${item.id}`} className={styles.item}>
+                    <div className={styles.itemRow}>
+                      <span className={styles.itemIcon}>{ICON[item.kind]}</span>
+                      <div className={styles.itemMain}>
+                        <span className={`${styles.itemTitle} ${item.done ? styles.done : ''}`}>{item.title}</span>
+                        <div className={styles.itemMeta}>
+                          {KIND_LABEL[item.kind]}{item.at ? ` · ${formatTime(item.at, tz)}` : ''}
+                          {item.recurrence && <span className={`${styles.badge} ${styles.badgeRepeat}`}>{'🔁'} {RECURRENCE_LABEL[item.recurrence]}</span>}
+                          {group.key === 'late' && <span className={`${styles.badge} ${styles.badgeLate}`}>atrasado</span>}
+                          {item.done && <span className={`${styles.badge} ${styles.badgeDone}`}>concluido</span>}
                         </div>
-                        {item.kind === 'event' && (
-                          <div className={styles.field}>
-                            <label htmlFor={`end-${item.id}`}>Término (opcional)</label>
-                            <input id={`end-${item.id}`} type="datetime-local" value={form.endsAt} onChange={(e) => setForm({ ...form, endsAt: e.target.value })} />
-                          </div>
+                      </div>
+                      <div className={styles.itemActions}>
+                        {item.kind !== 'event' && (
+                          <button type="button" className={`${styles.iconBtn} ${item.done ? styles.done : ''}`} aria-label={item.done ? 'Reabrir' : 'Concluir'} onClick={() => toggleDone(item)} disabled={pending}>{'✓'}</button>
                         )}
-                      </div>
-                      <div className={styles.field}>
-                        <span className={styles.fieldLabel}>Avisar</span>
-                        <div className={styles.checkGrid}>
-                          {ALERT_OPTIONS.map((option) => (
-                            <label key={option.value} className={styles.checkLabel}>
-                              <input
-                                type="checkbox"
-                                checked={form.alerts.includes(option.value)}
-                                onChange={(e) => setForm({ ...form, alerts: e.target.checked ? [...new Set([...form.alerts, option.value])] : form.alerts.filter((value) => value !== option.value) })}
-                              />
-                              {option.label}
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                      <div className={styles.field}>
-                        <span className={styles.fieldLabel}>Canais</span>
-                        <div className={styles.checkGrid}>
-                          {(['push', 'whatsapp', 'telegram'] as NotificationChannel[]).map((channel) => (
-                            <label key={channel} className={styles.checkLabel}>
-                              <input
-                                type="checkbox"
-                                checked={form.channels.includes(channel)}
-                                onChange={(e) => setForm({ ...form, channels: e.target.checked ? [...new Set([...form.channels, channel])] : form.channels.filter((value) => value !== channel) })}
-                              />
-                              {channel === 'push' ? 'notificação push' : channel === 'telegram' ? 'Telegram' : 'WhatsApp'}
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                      <div className={styles.formActions}>
-                        <button type="button" className={`${styles.btn} ${styles.btnGhost}`} onClick={() => setEditingId(null)} disabled={pending}>Cancelar</button>
-                        <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => save(item)} disabled={pending}>{pending ? 'Salvando…' : 'Salvar'}</button>
+                        <button type="button" className={styles.iconBtn} aria-label="Editar" onClick={() => (editingId === item.id ? setEditingId(null) : startEdit(item))}>{'✎'}</button>
+                        <button type="button" className={`${styles.iconBtn} ${styles.danger}`} aria-label="Excluir" onClick={() => remove(item)} disabled={pending}>{'✕'}</button>
                       </div>
                     </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))
+
+                    {editingId === item.id && (
+                      <div className={styles.edit}>
+                        <div className={styles.field}>
+                          <label htmlFor={`title-${item.id}`}>Titulo</label>
+                          <input id={`title-${item.id}`} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
+                        </div>
+                        <div className={item.kind === 'event' ? styles.grid2 : styles.field}>
+                          <div className={styles.field}>
+                            <label htmlFor={`at-${item.id}`}>{item.kind === 'task' ? 'Data e hora (opcional)' : 'Data e hora'}</label>
+                            <input id={`at-${item.id}`} type="datetime-local" value={form.at} onChange={(e) => setForm({ ...form, at: e.target.value })} />
+                          </div>
+                          {item.kind === 'event' && (
+                            <div className={styles.field}>
+                              <label htmlFor={`end-${item.id}`}>Termino (opcional)</label>
+                              <input id={`end-${item.id}`} type="datetime-local" value={form.endsAt} onChange={(e) => setForm({ ...form, endsAt: e.target.value })} />
+                            </div>
+                          )}
+                        </div>
+                        <div className={styles.field}>
+                          <span className={styles.fieldLabel}>Avisar</span>
+                          <div className={styles.checkGrid}>
+                            {ALERT_OPTIONS.map((option) => (
+                              <label key={option.value} className={styles.checkLabel}>
+                                <input
+                                  type="checkbox"
+                                  checked={form.alerts.includes(option.value)}
+                                  onChange={(e) => setForm({ ...form, alerts: e.target.checked ? [...new Set([...form.alerts, option.value])] : form.alerts.filter((value) => value !== option.value) })}
+                                />
+                                {option.label}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                        <div className={styles.field}>
+                          <span className={styles.fieldLabel}>Canais</span>
+                          <div className={styles.checkGrid}>
+                            {(['push', 'whatsapp', 'telegram'] as NotificationChannel[]).map((channel) => (
+                              <label key={channel} className={styles.checkLabel}>
+                                <input
+                                  type="checkbox"
+                                  checked={form.channels.includes(channel)}
+                                  onChange={(e) => setForm({ ...form, channels: e.target.checked ? [...new Set([...form.channels, channel])] : form.channels.filter((value) => value !== channel) })}
+                                />
+                                {channel === 'push' ? 'notificacao push' : channel === 'telegram' ? 'Telegram' : 'WhatsApp'}
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                        <div className={styles.formActions}>
+                          <button type="button" className={`${styles.btn} ${styles.btnGhost}`} onClick={() => setEditingId(null)} disabled={pending}>Cancelar</button>
+                          <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={() => save(item)} disabled={pending}>{pending ? 'Salvando...' : 'Salvar'}</button>
+                        </div>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </>
       )}
     </div>
   );
