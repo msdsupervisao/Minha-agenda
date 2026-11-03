@@ -2,7 +2,8 @@ import type { Contact, NotificationChannel } from '@/lib/assistant/types';
 import { sendCloudWhatsAppNotification } from '@/lib/assistant/whatsapp-cloud';
 import { notificationPushPayload } from '@/lib/push/pure';
 import { pushConfigured, sendPush, type PushSub } from '@/lib/push/send';
-import type { DueNotification } from './schedule';
+import { sendTelegram, telegramConfigured } from '@/lib/telegram/send';
+import type { DueNotification, DispatchChannel } from './schedule';
 
 export type DispatchTarget = {
   subscriptions: Array<PushSub & { id: string }>;
@@ -18,6 +19,7 @@ export type DispatchResult = {
 
 export async function sendNotification(notification: DueNotification, target: DispatchTarget, now = new Date()): Promise<DispatchResult> {
   if (notification.channel === 'push') return sendPushNotification(notification, target.subscriptions);
+  if (notification.channel === 'telegram') return sendTelegramNotification(notification);
   const result = await sendCloudWhatsAppNotification(target.contact, notification.title, now, fetch, [notification.title, formatAnchor(notification.anchorAt, notification.timezone)]);
   return { ok: result.ok, skipped: result.skipped, goneSubscriptionIds: [], error: result.error };
 }
@@ -50,6 +52,14 @@ async function sendPushNotification(notification: DueNotification, subscriptions
 
 export function channelList(value: unknown): NotificationChannel[] {
   if (!Array.isArray(value)) return ['push'];
-  const channels = [...new Set(value.filter((item): item is NotificationChannel => item === 'push' || item === 'whatsapp' || item === 'desktop'))];
+  const channels = [...new Set(value.filter((item): item is NotificationChannel => item === 'push' || item === 'whatsapp' || item === 'desktop' || item === 'telegram'))];
   return channels.length ? channels : ['push'];
+}
+
+async function sendTelegramNotification(notification: DueNotification): Promise<DispatchResult> {
+  if (!telegramConfigured()) return { ok: false, goneSubscriptionIds: [], error: 'telegram_not_configured' };
+  const anchor = formatAnchor(notification.anchorAt, notification.timezone);
+  const text = `🔔 <b>${notification.title}</b>\n${anchor}`;
+  const result = await sendTelegram(text);
+  return { ok: result.ok, goneSubscriptionIds: [], error: result.error };
 }

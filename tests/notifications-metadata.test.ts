@@ -40,3 +40,22 @@ test('desktop: canal desktop junto com push continua enviando o push', () => {
   assert.equal(sent.length, 1);
   assert.equal(sent[0]!.channel, 'push');
 });
+
+test('telegram: canal telegram é aceito em notificationFromMeta e channelList', () => {
+  assert.deepEqual(notificationFromMeta({ alerts: [60], channels: ['telegram'] }, 'task'), { alerts: [60], channels: ['telegram'] });
+  assert.deepEqual(channelList(['telegram']), ['telegram']);
+  assert.deepEqual(channelList(['telegram', 'push']), ['telegram', 'push']);
+});
+
+test('telegram: canal telegram gera aviso no servidor', () => {
+  const item = { itemType: 'task' as const, id: 't3', userId: 'u1', title: 'Aula', anchorIso: '2026-10-31T15:00:00.000Z', alerts: [60], channels: ['telegram' as const] };
+  const sent = dueNotifications(item, 'America/Cuiaba', new Date('2026-10-31T15:30:00.000Z'));
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]!.channel, 'telegram');
+});
+
+test('migration: canal telegram aceito no check da nova migração', () => {
+  const sql = readFileSync(join(process.cwd(), 'supabase/migrations/20261102000200_notification_channel_telegram.sql'), 'utf8');
+  assert.match(sql, /notification_deliveries_channel_check/i);
+  assert.match(sql, /'telegram'/i);
+});

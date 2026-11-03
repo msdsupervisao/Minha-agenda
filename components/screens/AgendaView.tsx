@@ -159,14 +159,14 @@ export default function AgendaView({ groups, loadError, tz }: { groups: AgendaGr
                       <div className={styles.field}>
                         <span className={styles.fieldLabel}>Canais</span>
                         <div className={styles.checkGrid}>
-                          {(['push', 'whatsapp'] as NotificationChannel[]).map((channel) => (
+                          {(['push', 'whatsapp', 'telegram'] as NotificationChannel[]).map((channel) => (
                             <label key={channel} className={styles.checkLabel}>
                               <input
                                 type="checkbox"
                                 checked={form.channels.includes(channel)}
                                 onChange={(e) => setForm({ ...form, channels: e.target.checked ? [...new Set([...form.channels, channel])] : form.channels.filter((value) => value !== channel) })}
                               />
-                              {channel === 'push' ? 'notificação push' : 'WhatsApp'}
+                              {channel === 'push' ? 'notificação push' : channel === 'telegram' ? 'Telegram' : 'WhatsApp'}
                             </label>
                           ))}
                         </div>

@@ -4,6 +4,7 @@ import { isCronAuthorized } from '@/lib/push/cron-auth';
 import { collectNotificationItems } from '@/lib/notifications/collect';
 import { dueNotifications, type DueNotification } from '@/lib/notifications/schedule';
 import { pushFallbackNotification, sendNotification } from '@/lib/notifications/dispatch';
+import type { DispatchChannel } from '@/lib/notifications/schedule';
 import { isStalePending } from '@/lib/notifications/delivery';
 import { pushConfigured } from '@/lib/push/send';
 import { nextRecurringDue } from '@/lib/assistant/recurrence';
@@ -33,9 +34,9 @@ async function handle(request: Request) {
   const itemByKey = new Map(items.map((item) => [`${item.itemType}:${item.id}`, item]));
   const due = items.flatMap((item) => dueNotifications(item, item.timezone, nowDate));
   const subscriptions = new Map<string, StoredSubscription[]>();
-  const sent = { push: 0, whatsapp: 0 };
-  const failed = { push: 0, whatsapp: 0 };
-  const skipped = { push: 0, whatsapp: 0 };
+  const sent: Record<DispatchChannel, number> = { push: 0, whatsapp: 0, telegram: 0 };
+  const failed: Record<DispatchChannel, number> = { push: 0, whatsapp: 0, telegram: 0 };
+  const skipped: Record<DispatchChannel, number> = { push: 0, whatsapp: 0, telegram: 0 };
   let checked = 0;
   let reserved = 0;
 
@@ -45,9 +46,9 @@ async function handle(request: Request) {
     if (!item) continue;
     const result = await sendAndRecord(notification, item, client, nowDate, now, subscriptions, { sent, failed, skipped });
     if (result.processed) reserved += 1;
-    if (notification.channel === 'whatsapp' && result.processed && !result.ok) {
-      // WhatsApp é preferencial quando escolhido, mas nunca deve deixar o item
-      // sem aviso: a tentativa de push usa sua própria chave idempotente.
+    if ((notification.channel === 'whatsapp' || notification.channel === 'telegram') && result.processed && !result.ok) {
+      // WhatsApp/Telegram são preferenciais quando escolhidos, mas nunca devem
+      // deixar o item sem aviso: a tentativa de push usa sua própria chave idempotente.
       const fallback: DueNotification = pushFallbackNotification(notification);
       const fallbackResult = await sendAndRecord(fallback, item, client, nowDate, now, subscriptions, { sent, failed, skipped });
       if (fallbackResult.processed) reserved += 1;
@@ -100,7 +101,7 @@ async function sendAndRecord(
   nowDate: Date,
   now: string,
   subscriptions: Map<string, StoredSubscription[]>,
-  counters: { sent: Record<'push' | 'whatsapp', number>; failed: Record<'push' | 'whatsapp', number>; skipped: Record<'push' | 'whatsapp', number> },
+  counters: { sent: Record<DispatchChannel, number>; failed: Record<DispatchChannel, number>; skipped: Record<DispatchChannel, number> },
 ) {
   const reservation = await reserveDelivery(client, notification, now);
   if (!reservation.process) return { ok: false, skipped: true, processed: false };

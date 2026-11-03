@@ -1,10 +1,10 @@
 import { isValidTimeZone } from '@/lib/data/time';
 import type { NotificationChannel } from '@/lib/assistant/types';
 
-/** Canais que o servidor consegue entregar. 'desktop' nunca gera disparo. */
-export type DeliveryChannel = 'push' | 'whatsapp';
-
 export type NotificationItemType = 'reminder' | 'event' | 'task';
+
+/** Canais que o servidor efetivamente despacha. 'desktop' é local (PC) e nunca chega aqui. */
+export type DispatchChannel = 'push' | 'whatsapp' | 'telegram';
 
 export type NotifiableItem = {
   itemType: NotificationItemType;
@@ -21,7 +21,7 @@ export type DueNotification = {
   itemId: string;
   userId: string;
   title: string;
-  channel: DeliveryChannel;
+  channel: DispatchChannel;
   offsetMinutes: number;
   anchorAt: string;
   fireAt: string;
@@ -35,13 +35,12 @@ export function dueNotifications(item: NotifiableItem, timezone: string, now = n
   const anchor = new Date(item.anchorIso);
   if (!item.id || !item.userId || !item.title || Number.isNaN(anchor.getTime())) return [];
   const offsets = [...new Set(item.alerts)].filter((offset) => Number.isInteger(offset) && offset >= 0).sort((a, b) => b - a);
-  const channels = [...new Set(item.channels)];
+  const channels = [...new Set(item.channels)].filter((c): c is DispatchChannel => c === 'push' || c === 'whatsapp' || c === 'telegram');
   const output: DueNotification[] = [];
   for (const offsetMinutes of offsets) {
     const fire = new Date(anchor.getTime() - offsetMinutes * 60_000);
     if (fire.getTime() > now.getTime()) continue;
     for (const channel of channels) {
-      if (channel !== 'push' && channel !== 'whatsapp') continue;
       output.push({
         itemType: item.itemType,
         itemId: item.id,
