@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState, useTransition } from 'react';
+import { useRef, useState, useTransition } from 'react';
 import type { AgendaGroup, AgendaItem, AgendaKind } from '@/lib/data/agenda';
 import type { NotificationChannel } from '@/lib/assistant/types';
 import { formatTime, toDatetimeLocal } from '@/lib/format';
@@ -21,6 +21,53 @@ export default function AgendaView({ groups, loadError, tz }: { groups: AgendaGr
   const [form, setForm] = useState<{ title: string; at: string; endsAt: string; alerts: number[]; channels: NotificationChannel[] }>({ title: '', at: '', endsAt: '', alerts: [], channels: ['push'] });
   const [error, setError] = useState<string | null>(null);
   const [undo, setUndo] = useState<{ kind: AgendaKind; id: string } | null>(null);
+
+  // Quick-add inline
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [quickText, setQuickText] = useState('');
+  const [quickStatus, setQuickStatus] = useState<'idle' | 'saving' | 'done' | 'error'>('idle');
+  const [quickMsg, setQuickMsg] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function openQuickAdd() {
+    setShowQuickAdd(true);
+    setQuickStatus('idle');
+    setQuickMsg('');
+    setQuickText('');
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }
+
+  function closeQuickAdd() {
+    setShowQuickAdd(false);
+    setQuickStatus('idle');
+    setQuickMsg('');
+    setQuickText('');
+  }
+
+  async function submitQuickReminder(e: React.FormEvent) {
+    e.preventDefault();
+    const text = quickText.trim();
+    if (!text) return;
+    setQuickStatus('saving');
+    setQuickMsg('Criando...');
+    try {
+      const res = await fetch('/api/agent/turn', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text, source: 'text' }),
+      });
+      const data = await res.json() as { reply?: string; error?: string };
+      if (!res.ok) throw new Error(data.error || 'Erro ao criar lembrete');
+      setQuickStatus('done');
+      setQuickMsg(data.reply || 'Lembrete criado!');
+      setQuickText('');
+      router.refresh();
+      window.setTimeout(closeQuickAdd, 4000);
+    } catch (err) {
+      setQuickStatus('error');
+      setQuickMsg(err instanceof Error ? err.message : 'Nao foi possivel criar o lembrete.');
+    }
+  }
 
   function startEdit(item: AgendaItem) {
     setError(null);
@@ -77,6 +124,31 @@ export default function AgendaView({ groups, loadError, tz }: { groups: AgendaGr
 
   const isEmpty = groups.length === 0;
 
+  const quickAddForm = (
+    <form onSubmit={submitQuickReminder} style={{ display: 'grid', gap: '8px' }}>
+      <div className={styles.field}>
+        <input
+          ref={inputRef}
+          placeholder={'Ex: me lembra amanha de organizar as turmas'}
+          value={quickText}
+          onChange={(e) => setQuickText(e.target.value)}
+          disabled={quickStatus === 'saving'}
+        />
+      </div>
+      {quickMsg && (
+        <small style={{ color: quickStatus === 'error' ? '#ff8f6b' : quickStatus === 'done' ? '#43d787' : 'rgba(255,255,255,.7)', fontSize: '13px', lineHeight: '1.4' }}>
+          {quickMsg}
+        </small>
+      )}
+      <div className={styles.formActions}>
+        <button type="button" className={`${styles.btn} ${styles.btnGhost}`} onClick={closeQuickAdd} disabled={quickStatus === 'saving'}>Cancelar</button>
+        <button type="submit" className={`${styles.btn} ${styles.btnPrimary}`} disabled={quickStatus === 'saving' || !quickText.trim()}>
+          {quickStatus === 'saving' ? 'Criando...' : 'Criar lembrete'}
+        </button>
+      </div>
+    </form>
+  );
+
   return (
     <div className={styles.wrap}>
       {error && <div className={styles.error}>{error}</div>}
@@ -93,12 +165,21 @@ export default function AgendaView({ groups, loadError, tz }: { groups: AgendaGr
         <div className={styles.empty}>
           <span className={styles.emptyIcon}>{'◷'}</span>
           <p>Nada na agenda ainda.</p>
-          <small>Abra o assistente e fale: &quot;me lembra amanha as 9 de falar com o Joao&quot;</small>
-          <Link href="/" className={`${styles.btn} ${styles.btnPrimary}`}>Abrir assistente</Link>
+          {showQuickAdd ? quickAddForm : (
+            <>
+              <small>Diga ou escreva o que precisa lembrar:</small>
+              <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} onClick={openQuickAdd}>+ Novo lembrete</button>
+              <Link href="/" className={styles.chip} style={{ marginTop: '4px' }}>Abrir assistente de voz</Link>
+            </>
+          )}
         </div>
       ) : (
         <>
-          <Link href="/" className={`${styles.btn} ${styles.btnPrimary}`} style={{ textAlign: 'center', textDecoration: 'none' }}>+ Novo lembrete</Link>
+          {showQuickAdd ? quickAddForm : (
+            <button type="button" className={`${styles.btn} ${styles.btnPrimary}`} style={{ textAlign: 'center' }} onClick={openQuickAdd}>
+              + Novo lembrete
+            </button>
+          )}
           {groups.map((group) => (
             <div key={group.key}>
               <p className={`${styles.sectionTitle} ${group.key === 'late' ? styles.attention : ''}`}>{group.label}</p>
