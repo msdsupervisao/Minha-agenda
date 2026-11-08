@@ -33,8 +33,8 @@ test('push: falha de persistência distingue sessão expirada', () => {
 test('push: erros travados no Android recebem orientação específica', () => {
   assert.match(pushActivationErrorMessage('PermissionTimeout'), /não concluiu a permissão/i);
   assert.match(pushActivationErrorMessage('ServiceWorkerTimeout'), /preparar o serviço/i);
-  assert.match(pushActivationErrorMessage('PushSubscriptionTimeout'), /VPN e DNS privado/i);
-  assert.match(pushActivationErrorMessage('AbortError'), /Serviços do Google Play/i);
+  assert.match(pushActivationErrorMessage('PushSubscriptionTimeout'), /demorou demais/i);
+  assert.match(pushActivationErrorMessage('AbortError', 'failed'), /AbortError: failed/i);
   assert.match(pushActivationErrorMessage('NotAllowedError'), /permissão.*bloqueada/i);
 });
 
@@ -43,7 +43,7 @@ test('push: ativação não desregistra o service worker e limpa inscrição nã
   assert.doesNotMatch(component, /\.unregister\s*\(/);
   assert.match(component, /if \(!res\.ok\)[\s\S]*?sub\.unsubscribe\(\)/);
   assert.match(component, /if \(pendingSub\)[\s\S]*?pendingSub\.unsubscribe\(\)/);
-  assert.match(component, /navigator\.serviceWorker\.register\('\/sw\.js'\)/);
+  assert.match(component, /navigator\.serviceWorker\.register\('\/sw\.js', \{ updateViaCache: 'none' \}\)/);
   assert.match(component, /PushSubscriptionTimeout/);
 });
 

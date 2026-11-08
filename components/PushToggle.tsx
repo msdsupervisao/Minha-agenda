@@ -79,7 +79,12 @@ export default function PushToggle() {
       }
 
       setMsg('Preparando o serviço de notificações…');
-      await withTimeout(navigator.serviceWorker.register('/sw.js'), 15_000, 'ServiceWorkerTimeout');
+      const registration = await withTimeout(
+        navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }),
+        15_000,
+        'ServiceWorkerTimeout',
+      );
+      await withTimeout(registration.update(), 15_000, 'ServiceWorkerTimeout');
       const reg = await withTimeout(navigator.serviceWorker.ready, 15_000, 'ServiceWorkerTimeout');
 
       setMsg('Conectando ao serviço de notificações do Android…');
@@ -117,7 +122,7 @@ export default function PushToggle() {
         setState('off');
       }
       const name = (err as { name?: string })?.name;
-      setMsg(pushActivationErrorMessage(name));
+      setMsg(pushActivationErrorMessage(name, err instanceof Error ? err.message : undefined));
     } finally { setBusy(false); }
   }
 
