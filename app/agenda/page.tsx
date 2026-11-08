@@ -25,7 +25,7 @@ export default async function AgendaPage() {
 
   return (
     <AppShell title="Agenda" subtitle="Lembretes, tarefas e compromissos em ordem." email={ctx.email}>
-      <AgendaView groups={groups} loadError={loadError} tz={tz} />
+      <AgendaView groups={groups} loadError={loadError} tz={tz} agentBridge={process.env.AGENT_BRIDGE_ENABLED === 'true'} userId={ctx.userId} />
     </AppShell>
   );
 }

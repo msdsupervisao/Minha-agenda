@@ -5,7 +5,7 @@ import { collectNotificationItems } from '@/lib/notifications/collect';
 import { dueNotifications, type DueNotification } from '@/lib/notifications/schedule';
 import { pushFallbackNotification, sendNotification } from '@/lib/notifications/dispatch';
 import type { DispatchChannel } from '@/lib/notifications/schedule';
-import { isStalePending } from '@/lib/notifications/delivery';
+import { isStalePending, reminderReadyToFinalize } from '@/lib/notifications/delivery';
 import { pushConfigured } from '@/lib/push/send';
 import { nextRecurringDue } from '@/lib/assistant/recurrence';
 
@@ -39,6 +39,7 @@ async function handle(request: Request) {
   const skipped: Record<DispatchChannel, number> = { push: 0, whatsapp: 0, telegram: 0 };
   let checked = 0;
   let reserved = 0;
+  const delivered = new Set<string>();
 
   for (const notification of due) {
     checked += 1;
@@ -46,16 +47,18 @@ async function handle(request: Request) {
     if (!item) continue;
     const result = await sendAndRecord(notification, item, client, nowDate, now, subscriptions, { sent, failed, skipped });
     if (result.processed) reserved += 1;
+    if (result.ok || result.alreadySent) delivered.add(notification.dedupeKey);
     if ((notification.channel === 'whatsapp' || notification.channel === 'telegram') && result.processed && !result.ok) {
       // WhatsApp/Telegram são preferenciais quando escolhidos, mas nunca devem
       // deixar o item sem aviso: a tentativa de push usa sua própria chave idempotente.
       const fallback: DueNotification = pushFallbackNotification(notification);
       const fallbackResult = await sendAndRecord(fallback, item, client, nowDate, now, subscriptions, { sent, failed, skipped });
       if (fallbackResult.processed) reserved += 1;
+      if (fallbackResult.ok || fallbackResult.alreadySent) delivered.add(notification.dedupeKey);
     }
   }
 
-  await finalizeReminders(client, items, nowDate);
+  await finalizeReminders(client, items, due, delivered, nowDate);
   return NextResponse.json({ ok: true, checked, reserved, sent, failed, skipped, pushConfigured: pushConfigured(), ...cleanup });
 }
 
@@ -80,18 +83,19 @@ async function reserveDelivery(client: ReturnType<typeof createServiceClient>, n
     status: 'pending',
     updated_at: now,
   });
-  if (!error) return { process: true };
+  if (!error) return { process: true, alreadySent: false };
   if (error.code !== '23505') {
     console.error('[minha-agenda:notifications]', JSON.stringify({ operation: 'reserve', error: error.message }));
-    return { process: false };
+    return { process: false, alreadySent: false };
   }
   const existing = await client.from('notification_deliveries').select('status,updated_at').eq('dedupe_key', notification.dedupeKey).maybeSingle();
-  if (existing.data?.status === 'sent') return { process: false };
+  if (existing.error || !existing.data) return { process: false, alreadySent: false };
+  if (existing.data.status === 'sent') return { process: false, alreadySent: true };
   if (existing.data?.status === 'pending') {
-    if (!isStalePending(existing.data?.updated_at ? String(existing.data.updated_at) : null, new Date(now))) return { process: false };
+    if (!isStalePending(existing.data?.updated_at ? String(existing.data.updated_at) : null, new Date(now))) return { process: false, alreadySent: false };
   }
-  const retry = await client.from('notification_deliveries').update({ status: 'pending', error: null, updated_at: now }).eq('dedupe_key', notification.dedupeKey);
-  return { process: !retry.error };
+  const retry = await client.from('notification_deliveries').update({ status: 'pending', error: null, updated_at: now }).eq('dedupe_key', notification.dedupeKey).eq('status', existing.data.status).eq('updated_at', existing.data.updated_at).select('id').maybeSingle();
+  return { process: !retry.error && Boolean(retry.data), alreadySent: false };
 }
 
 async function sendAndRecord(
@@ -104,7 +108,7 @@ async function sendAndRecord(
   counters: { sent: Record<DispatchChannel, number>; failed: Record<DispatchChannel, number>; skipped: Record<DispatchChannel, number> },
 ) {
   const reservation = await reserveDelivery(client, notification, now);
-  if (!reservation.process) return { ok: false, skipped: true, processed: false };
+  if (!reservation.process) return { ok: false, skipped: true, processed: false, alreadySent: reservation.alreadySent };
   let userSubscriptions = subscriptions.get(notification.userId);
   if (!userSubscriptions && notification.channel === 'push') {
     const result = await client.from('push_subscriptions').select('id,endpoint,p256dh,auth').eq('user_id', notification.userId);
@@ -114,21 +118,34 @@ async function sendAndRecord(
   const result = await sendNotification(notification, { subscriptions: userSubscriptions || [], contact: item.contact }, nowDate);
   for (const id of result.goneSubscriptionIds) await client.from('push_subscriptions').delete().eq('id', id);
   const status: DeliveryStatus = result.ok ? 'sent' : result.skipped ? 'skipped' : 'failed';
-  await client.from('notification_deliveries').update({ status, error: result.error || null, sent_at: result.ok ? now : null, updated_at: now }).eq('dedupe_key', notification.dedupeKey);
+  const saved = await client.from('notification_deliveries').update({ status, error: result.error || null, sent_at: result.ok ? now : null, updated_at: now }).eq('dedupe_key', notification.dedupeKey);
+  if (saved.error) {
+    console.error('[minha-agenda:notifications]', JSON.stringify({ operation: 'record_delivery', error: saved.error.message }));
+    counters.failed[notification.channel] += 1;
+    return { ok: false, processed: false, alreadySent: false };
+  }
   if (result.ok) counters.sent[notification.channel] += 1;
   else if (result.skipped) counters.skipped[notification.channel] += 1;
   else counters.failed[notification.channel] += 1;
-  return { ...result, processed: true };
+  return { ...result, processed: true, alreadySent: false };
 }
 
-async function finalizeReminders(client: ReturnType<typeof createServiceClient>, items: Awaited<ReturnType<typeof collectNotificationItems>>, now: Date) {
+async function finalizeReminders(client: ReturnType<typeof createServiceClient>, items: Awaited<ReturnType<typeof collectNotificationItems>>, due: DueNotification[], delivered: ReadonlySet<string>, now: Date) {
+  const dueByItem = new Map<string, DueNotification[]>();
+  for (const notification of due) {
+    if (notification.itemType !== 'reminder') continue;
+    const key = `${notification.userId}:${notification.itemId}`;
+    const group = dueByItem.get(key) || [];
+    group.push(notification);
+    dueByItem.set(key, group);
+  }
   for (const item of items) {
-    if (item.itemType !== 'reminder' || new Date(item.anchorIso).getTime() > now.getTime()) continue;
+    if (!reminderReadyToFinalize(item, dueByItem.get(`${item.userId}:${item.id}`) || [], delivered, now)) continue;
     if (item.recurrence) {
       const next = nextRecurringDue(item.anchorIso, item.recurrence, now);
-      await client.from('reminders').update({ due_at: next, notified_at: null, notification_status: 'pending', updated_at: now.toISOString() }).eq('id', item.id).eq('user_id', item.userId);
+      await client.from('reminders').update({ due_at: next, notified_at: null, notification_status: 'pending', updated_at: now.toISOString() }).eq('id', item.id).eq('user_id', item.userId).eq('due_at', item.anchorIso).is('notified_at', null);
     } else {
-      await client.from('reminders').update({ notified_at: now.toISOString(), notification_status: 'delivered', updated_at: now.toISOString() }).eq('id', item.id).eq('user_id', item.userId);
+      await client.from('reminders').update({ notified_at: now.toISOString(), notification_status: 'delivered', updated_at: now.toISOString() }).eq('id', item.id).eq('user_id', item.userId).eq('due_at', item.anchorIso).is('notified_at', null);
     }
   }
 }

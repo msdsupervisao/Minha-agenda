@@ -7,6 +7,8 @@ import type { AgendaGroup, AgendaItem, AgendaKind } from '@/lib/data/agenda';
 import type { NotificationChannel } from '@/lib/assistant/types';
 import { formatTime, toDatetimeLocal } from '@/lib/format';
 import { deleteAgendaItem, restoreAgendaItem, setAgendaDone, updateAgendaItem } from '@/app/agenda/actions';
+import { sendBridgeTurn } from '@/lib/agent/bridge-client';
+import { verifiedReminderCreated } from '@/lib/agent/client';
 import styles from './Screens.module.css';
 
 const ICON: Record<AgendaKind, string> = { reminder: '◷', task: '✓', event: '▦' };
@@ -14,7 +16,7 @@ const KIND_LABEL: Record<AgendaKind, string> = { reminder: 'lembrete', task: 'ta
 const RECURRENCE_LABEL = { daily: 'todo dia', weekly: 'toda semana', monthly: 'todo mes' } as const;
 const ALERT_OPTIONS = [{ value: 0, label: 'na hora' }, { value: 15, label: '15 min antes' }, { value: 60, label: '1 h antes' }, { value: 1440, label: '1 dia antes' }];
 
-export default function AgendaView({ groups, loadError, tz }: { groups: AgendaGroup[]; loadError?: boolean; tz?: string }) {
+export default function AgendaView({ groups, loadError, tz, agentBridge = false, userId = '' }: { groups: AgendaGroup[]; loadError?: boolean; tz?: string; agentBridge?: boolean; userId?: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -51,6 +53,20 @@ export default function AgendaView({ groups, loadError, tz }: { groups: AgendaGr
     setQuickStatus('saving');
     setQuickMsg('Criando...');
     try {
+      if (agentBridge) {
+        const result = await sendBridgeTurn({ text, source: 'text' }, userId);
+        if (!verifiedReminderCreated(result)) {
+          setQuickStatus('error');
+          setQuickMsg(result.reply || 'Não consegui confirmar o lembrete. Abra o assistente para continuar.');
+          return;
+        }
+        setQuickStatus('done');
+        setQuickMsg(result.reply);
+        setQuickText('');
+        router.refresh();
+        window.setTimeout(closeQuickAdd, 4000);
+        return;
+      }
       const res = await fetch('/api/agent/turn', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -140,6 +156,7 @@ export default function AgendaView({ groups, loadError, tz }: { groups: AgendaGr
           {quickMsg}
         </small>
       )}
+      {quickStatus === 'error' && agentBridge && <Link href="/" className={styles.chip}>Continuar no assistente</Link>}
       <div className={styles.formActions}>
         <button type="button" className={`${styles.btn} ${styles.btnGhost}`} onClick={closeQuickAdd} disabled={quickStatus === 'saving'}>Cancelar</button>
         <button type="submit" className={`${styles.btn} ${styles.btnPrimary}`} disabled={quickStatus === 'saving' || !quickText.trim()}>

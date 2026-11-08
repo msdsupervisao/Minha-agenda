@@ -62,6 +62,10 @@ export function verifiedScheduleHandoff(result: AgentClientResult) {
     ));
 }
 
+export function verifiedReminderCreated(result: AgentClientResult) {
+  return result.kind === 'completed' && Boolean(result.toolResults?.some((tool) => tool.toolName === 'create_reminder' && tool.status === 'success' && tool.verified));
+}
+
 function safeJson(response: Response): Promise<Record<string, unknown>> {
   return response.json().catch(() => ({})) as Promise<Record<string, unknown>>;
 }

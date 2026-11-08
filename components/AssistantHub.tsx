@@ -8,6 +8,7 @@ import type { ActivityItem, AssistantAction, AssistantState } from '@/lib/assist
 import { buildWhatsAppHandoffUrl } from '@/lib/assistant/whatsapp-handoff';
 import type { ResolvedWeeklyNotice } from '@/lib/notices/weekly';
 import { sendAgentTurn, verifiedScheduleHandoff, type AgentClientResult } from '@/lib/agent/client';
+import { resumeBridgeTurn, sendBridgeTurn } from '@/lib/agent/bridge-client';
 import type { AgentProgress } from '@/lib/agent/contracts';
 import { selectPortugueseVoice, speechTextForReply, stripMarkdownForSpeech } from '@/lib/assistant/speech';
 import { startVoiceSession, type Recognition } from '@/lib/assistant/voice-session';
@@ -35,7 +36,7 @@ const quickCommands = [
 
 function wait(time: number) { return new Promise((resolve) => window.setTimeout(resolve, time)); }
 
-export default function AssistantHub({ dataProvider = 'local', userEmail = null, agentPilot = false }: { dataProvider?: DataProviderName; userEmail?: string | null; agentPilot?: boolean }) {
+export default function AssistantHub({ dataProvider = 'local', userEmail = null, userId = '', agentPilot = false, agentBridge = false }: { dataProvider?: DataProviderName; userEmail?: string | null; userId?: string; agentPilot?: boolean; agentBridge?: boolean }) {
   const [state, setState] = useState<AssistantState>('idle');
   const [transcript, setTranscript] = useState('');
   const [input, setInput] = useState('');
@@ -55,6 +56,9 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
   const speechPlayer = useRef<ReturnType<typeof createSpeechPlayer> | null>(null);
   useEffect(() => () => speechPlayer.current?.cancel(), []);
   const weatherLocation = useRef<{ latitude: number; longitude: number } | undefined>(undefined);
+  function dispatchAgent(input: Parameters<typeof sendAgentTurn>[0], onProgress?: (event: AgentProgress) => void) {
+    return agentBridge ? sendBridgeTurn(input, userId) : sendAgentTurn(input, onProgress);
+  }
   const [locationNotice, setLocationNotice] = useState('');
   function enableWeatherLocation() {
     if (!navigator.geolocation) { setLocationNotice('Informe sua cidade na conversa.'); return; }
@@ -70,11 +74,31 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
     const assistant = createConversationClient(dataProvider);
     engine.current = assistant;
     void assistant.activities().then(setRecent).catch(() => setReply('Não consegui carregar suas ações recentes.'));
-    const checkStatus = () => { void getBackendAiStatus().then((status) => setProviderNotice(status.notice)).catch(() => setProviderNotice('Conexão indisponível.')); };
+    const checkStatus = () => {
+      if (agentBridge) {
+        void fetch('/api/agent/bridge?status=1', { cache: 'no-store' })
+          .then(async (response) => {
+            if (!response.ok) throw new Error('status_unavailable');
+            const status: { online?: boolean } = await response.json();
+            setProviderNotice(status.online ? 'Computador conectado.' : 'Ponte no computador não encontrada.');
+          }).catch(() => setProviderNotice('Não foi possível verificar a ponte.'));
+        return;
+      }
+      void getBackendAiStatus().then((status) => setProviderNotice(status.notice)).catch(() => setProviderNotice('Conexão indisponível.'));
+    };
     checkStatus();
     const healthTimer = window.setInterval(checkStatus, 30000);
     return () => { if (timer.current) window.clearTimeout(timer.current); window.clearInterval(healthTimer); };
-  }, [agentPilot, dataProvider]);
+  }, [agentPilot, agentBridge, dataProvider]);
+
+  useEffect(() => {
+    if (!agentBridge) return;
+    const pending = resumeBridgeTurn(userId);
+    if (!pending) return;
+    void pending.then((result) => handleAgentResult(result)).catch((error: unknown) => { setState('error'); setReply(error instanceof Error ? error.message : 'Não consegui consultar o pedido anterior.'); });
+  // Retoma somente quando a tela é aberta; a chave persistida evita duplicar pedidos.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentBridge, userId]);
 
   function speak(text: string) {
     speechPlayer.current ??= createSpeechPlayer(speakBrowser);
@@ -127,11 +151,11 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
     setWeeklyNotice(null);
     setTranscript(clean);
     setState('processing');
-    setReply('');
+    setReply(agentBridge ? 'Enviando ao computador. Aguardando a ponte processar o pedido…' : '');
     await wait(120);
 
     if (agentPilot) {
-      try { await handleAgentResult(await sendAgentTurn({ text: clean, source, weatherLocation: weatherLocation.current }, handleProgress)); }
+      try { await handleAgentResult(await dispatchAgent({ text: clean, source, weatherLocation: weatherLocation.current }, handleProgress)); }
       catch (error) {
         setState('error');
         setReply(error instanceof Error ? error.message : 'Não consegui consultar o agente.');
@@ -220,7 +244,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
       try {
         const approvalId = agentApprovalId;
         setAgentApprovalId(null);
-        await handleAgentResult(await sendAgentTurn({ approvalId, decision: 'approve' }, handleProgress));
+        await handleAgentResult(await dispatchAgent({ approvalId, decision: 'approve' }, handleProgress));
       } catch (error) {
         setState('error');
         setReply(error instanceof Error ? error.message : 'Não consegui confirmar a ação.');
@@ -340,7 +364,7 @@ export default function AssistantHub({ dataProvider = 'local', userEmail = null,
     if (agentApprovalId) {
       const approvalId = agentApprovalId;
       setAgentApprovalId(null);
-      try { await handleAgentResult(await sendAgentTurn({ approvalId, decision: 'cancel' })); }
+      try { await handleAgentResult(await dispatchAgent({ approvalId, decision: 'cancel' })); }
       catch (error) { setState('error'); setReply(error instanceof Error ? error.message : 'Não consegui cancelar.'); }
       return;
     }

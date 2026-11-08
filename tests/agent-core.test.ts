@@ -275,6 +275,14 @@ test('falha do provedor expõe apenas diagnósticos seguros', async () => {
   assert.doesNotMatch(JSON.stringify(result), /sensível/);
 });
 
+test('ponte informa claramente quando o modelo gratuito está sem cota', async () => {
+  const provider: AgentProvider = { name: 'opencode-test', async generate() { throw Object.assign(new Error('detalhes privados'), { code: 'opencode_free_limit' }); } };
+  const result = await new AgentOrchestrator(provider, new ToolRegistry()).run({ text: 'Teste.', context });
+  assert.equal(result.kind, 'failed');
+  assert.match(result.reply, /limite de uso/i);
+  assert.doesNotMatch(JSON.stringify(result), /detalhes privados/);
+});
+
 test('retomada executa somente a chamada persistida e já aprovada', async () => {
   let executions = 0;
   const provider = new ScriptedProvider([response({ text: 'O handoff foi criado; o celular ainda precisa confirmar.' })]);

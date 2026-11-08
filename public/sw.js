@@ -1,7 +1,7 @@
 // Service worker do PWA Minha Agenda: cache leve + notificações push.
 // Estratégia: network-first sem cachear páginas autenticadas nem API
 // (evita servir conteúdo protegido/obsoleto). Só pré-carrega os ícones.
-const CACHE = 'minha-agenda-v2';
+const CACHE = 'minha-agenda-v3';
 const ASSETS = ['/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (event) => {
@@ -32,6 +32,11 @@ self.addEventListener('push', (event) => {
     badge: '/icon-192.png',
     // An absent task ID must not collapse unrelated notifications into one.
     tag: payload.tag || '',
+    // Peça explicitamente alerta sonoro e reapresente avisos com a mesma tag.
+    // O Android ainda pode substituir isso se o canal do site estiver silencioso.
+    silent: false,
+    renotify: true,
+    requireInteraction: true,
     data: { url: payload.url || '/agenda' },
     vibrate: [80, 40, 80],
   }));

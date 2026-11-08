@@ -26,6 +26,7 @@ export async function sendPush(sub: PushSub, payload: PushPayload): Promise<{ ok
     await webpush.sendNotification(
       { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
       JSON.stringify(payload),
+      { urgency: 'high', TTL: 86_400 },
     );
     return { ok: true, gone: false };
   } catch (error) {

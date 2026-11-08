@@ -72,6 +72,7 @@ export type Reminder = BaseEntity & {
   dueAt: string;
   contactId: string | null;
   notificationStatus: 'pending' | 'delivered';
+  completedAt: string | null;
   recurrence?: Recurrence | null;
   notification?: NotificationPreferences;
 };

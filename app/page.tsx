@@ -11,5 +11,6 @@ export default async function Home() {
   if (!dataConfig.configured) return <AssistantHub dataProvider="local" />;
   const user = await getAuthenticatedUser();
   if (!user) redirect('/login');
-  return <AssistantHub dataProvider="supabase" userEmail={user.email} agentPilot={agentPilotEnabled()} />;
+  const agentBridge = process.env.AGENT_BRIDGE_ENABLED === 'true';
+  return <AssistantHub dataProvider="supabase" userEmail={user.email} userId={user.id} agentPilot={agentPilotEnabled() || agentBridge} agentBridge={agentBridge} />;
 }

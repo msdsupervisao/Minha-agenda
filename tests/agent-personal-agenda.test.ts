@@ -3,12 +3,13 @@ import test from 'node:test';
 import { ToolRegistry } from '../lib/agent/tool-registry';
 import { createPersonalAgendaTools, agendaRange } from '../lib/agent/tools/personal-agenda';
 import { emptyAgentContextState, type AgentExecutionContext } from '../lib/agent/contracts';
-import type { PersonalAgendaStore, SavedNote, SavedReminder } from '../lib/data/agent-personal-repository';
+import type { PersonalAgendaStore, SavedExpense, SavedNote, SavedReminder } from '../lib/data/agent-personal-repository';
 
 const context: AgentExecutionContext = { userId: 'owner', source: 'text', now: new Date('2026-09-06T14:00:00Z'), timezone: 'America/Cuiaba', state: emptyAgentContextState() };
 class MemoryStore implements PersonalAgendaStore {
   note: SavedNote | null = null;
   reminder: SavedReminder | null = null;
+  expense: SavedExpense | null = null;
   writes = 0;
   async agenda(userId: string, from: string, until: string) { assert.equal(userId, context.userId); assert.equal(from, '2026-09-06T04:00:00.000Z'); assert.equal(until, '2026-09-07T04:00:00.000Z'); return { items: [{ id: 'event-real', kind: 'event', title: 'Aula', at: '2026-09-06T18:00:00Z', status: null }], possiblyTruncated: false }; }
   async contacts() { return [{ id: 'real-contact', name: 'José', aliases: ['Zé'], role: null, className: null }]; }
@@ -16,7 +17,23 @@ class MemoryStore implements PersonalAgendaStore {
   async getNote(userId: string, id: string) { assert.equal(userId, context.userId); return id === this.note?.id ? this.note : null; }
   async createReminder(userId: string, title: string, dueAt: string) { assert.equal(userId, context.userId); this.writes++; this.reminder = { id: 'reminder-real', title, dueAt, notificationStatus: 'pending' }; return this.reminder.id; }
   async getReminder(userId: string, id: string) { assert.equal(userId, context.userId); return id === this.reminder?.id ? this.reminder : null; }
+  async createExpense(userId: string, expense: Omit<SavedExpense, 'id'>) { assert.equal(userId, context.userId); this.writes++; this.expense = { id: 'expense-real', ...expense }; return this.expense.id; }
+  async getExpense(userId: string, id: string) { assert.equal(userId, context.userId); return id === this.expense?.id ? this.expense : null; }
 }
+
+test('gasto é validado e verificado na conta antes da confirmação', async () => {
+  const store = new MemoryStore();
+  const registry = new ToolRegistry(createPersonalAgendaTools(store));
+  const result = await registry.execute({ callId: 'expense', name: 'create_expense', arguments: { amount: 60, category: 'combustível' } }, { ...context, source: 'voice' });
+  assert.equal(result.verified, true);
+  assert.deepEqual(store.expense, { id: 'expense-real', amount: 60, category: 'combustível', occurredAt: context.now.toISOString(), source: 'voice' });
+  const invalid = await registry.execute({ callId: 'invalid-expense', name: 'create_expense', arguments: { amount: 1.999, category: 'combustível' } }, context);
+  assert.equal(invalid.errorCode, 'invalid_arguments');
+  assert.equal(store.writes, 1);
+  store.getExpense = async () => null;
+  const unverified = await registry.execute({ callId: 'unverified-expense', name: 'create_expense', arguments: { amount: 3, category: 'transporte' } }, context);
+  assert.equal(unverified.errorCode, 'verification_failed');
+});
 
 test('agenda usa período local inclusivo e não fabrica dados fora da fonte', async () => {
   const registry = new ToolRegistry(createPersonalAgendaTools(new MemoryStore()));

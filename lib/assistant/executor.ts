@@ -30,7 +30,7 @@ export async function executeAction(
 
   if (action.intent === 'create_reminder') {
     const recurrence = recurrenceOrNull(action.data.recurrence);
-    const reminder: Reminder = { id: makeId(), userId: memory.userId, createdAt: now, updatedAt: now, title: String(action.data.title), dueAt: String(action.data.dueAt), contactId: stringOrNull(action.data.contactId), notificationStatus: 'pending', recurrence };
+    const reminder: Reminder = { id: makeId(), userId: memory.userId, createdAt: now, updatedAt: now, title: String(action.data.title), dueAt: String(action.data.dueAt), contactId: stringOrNull(action.data.contactId), notificationStatus: 'pending', completedAt: null, recurrence };
     repository.update((state) => state.reminders.unshift(reminder));
     repository.log({ intent: action.intent, entityType: 'reminder', entityId: reminder.id, summary: reminder.title, source, reversible: true, before: null, after: reminder });
     const when = recurrence ? recurrenceLabel(recurrence, reminder.dueAt, timezone) : friendlyDate(reminder.dueAt, timezone);

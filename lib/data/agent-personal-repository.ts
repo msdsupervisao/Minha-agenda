@@ -1,9 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Source } from '@/lib/assistant/types';
 
 export type AgendaItem = { id: string; kind: string; title: string; at: string; status: string | null };
 export type PersonalContact = { id: string; name: string; aliases: string[]; role: string | null; className: string | null };
 export type SavedNote = { id: string; content: string };
 export type SavedReminder = { id: string; title: string; dueAt: string; notificationStatus: string };
+export type SavedExpense = { id: string; amount: number; category: string; occurredAt: string; source: Source };
 export type SavedLongTermMemory = { id: string; kind: 'preference' | 'fact' | 'entity' | 'alias' | 'routine'; content: string; origin: 'explicit_user' | 'user_confirmed'; createdAt: string };
 export interface PersonalAgendaStore {
   agenda(userId: string, from: string, until: string): Promise<{ items: AgendaItem[]; possiblyTruncated: boolean }>;
@@ -12,6 +14,8 @@ export interface PersonalAgendaStore {
   getNote(userId: string, id: string): Promise<SavedNote | null>;
   createReminder(userId: string, title: string, dueAt: string): Promise<string>;
   getReminder(userId: string, id: string): Promise<SavedReminder | null>;
+  createExpense(userId: string, expense: Omit<SavedExpense, 'id'>): Promise<string>;
+  getExpense(userId: string, id: string): Promise<SavedExpense | null>;
   listLongTermMemory?(userId: string): Promise<SavedLongTermMemory[]>;
   addLongTermMemory?(userId: string, memory: Omit<SavedLongTermMemory, 'id' | 'createdAt'>): Promise<SavedLongTermMemory>;
   deleteLongTermMemory?(userId: string, id: string): Promise<boolean>;
@@ -56,6 +60,16 @@ export function createSupabasePersonalAgendaStore(client: SupabaseClient): Perso
       const { data, error } = await client.from('reminders').select('id,title,due_at,notification_status').eq('id', id).eq('user_id', userId).is('deleted_at', null).maybeSingle();
       if (error) throw new Error('reminder_verification_failed');
       return data ? { id: data.id, title: data.title, dueAt: data.due_at, notificationStatus: data.notification_status } : null;
+    },
+    async createExpense(userId, expense) {
+      const { data, error } = await client.from('expenses').insert({ user_id: userId, amount: expense.amount, currency: 'BRL', category: expense.category, occurred_at: expense.occurredAt, source: expense.source, metadata: { origin: 'agent' } }).select('id').single();
+      if (error || !data) throw new Error('expense_write_failed');
+      return data.id;
+    },
+    async getExpense(userId, id) {
+      const { data, error } = await client.from('expenses').select('id,amount,category,occurred_at,source').eq('id', id).eq('user_id', userId).is('deleted_at', null).maybeSingle();
+      if (error) throw new Error('expense_verification_failed');
+      return data ? { id: data.id, amount: Number(data.amount), category: data.category, occurredAt: data.occurred_at, source: data.source } : null;
     },
     async listLongTermMemory(userId) {
       const { data, error } = await client.from('agent_contexts').select('long_term_memory').eq('user_id', userId).maybeSingle();

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
-import { verifiedScheduleHandoff } from '../lib/agent/client';
+import { verifiedReminderCreated, verifiedScheduleHandoff } from '../lib/agent/client';
 import { evolveAgentContext, parseAgentContextRow, parseAgentConversation } from '../lib/agent/context-builder';
 import { agentPilotEnabled, runAgentPilot } from '../lib/agent/server-agent';
 import type { AgentProvider, AgentProviderRequest, AgentProviderResponse } from '../lib/agent/contracts';
@@ -105,6 +105,15 @@ test('cliente só abre handoff criado por ferramenta com sucesso verificado', ()
   assert.equal(verifiedScheduleHandoff(verified)?.handoffId, 'handoff-1');
 });
 
+test('lembrete rápido só confirma registro verificado', () => {
+  const result = { kind: 'completed' as const, reply: 'Qual horário?', toolResults: [] };
+  assert.equal(verifiedReminderCreated(result), false);
+  const tool = { callId: 'call', toolName: 'create_reminder', arguments: {}, status: 'success' as const, output: {}, verified: true, risk: 'low' as const };
+  assert.equal(verifiedReminderCreated({ ...result, toolResults: [tool] }), true);
+  assert.equal(verifiedReminderCreated({ ...result, toolResults: [{ ...tool, verified: false }] }), false);
+  assert.equal(verifiedReminderCreated({ ...result, kind: 'failed', toolResults: [tool] }), false);
+});
+
 test('piloto compõe contexto, tools reais e provedor sem tocar no fluxo antigo', async () => {
   const provider = new CapturingProvider();
   const catalog: ClassCatalog = { async list() { return []; } };
@@ -126,7 +135,7 @@ test('piloto compõe contexto, tools reais e provedor sem tocar no fluxo antigo'
   assert.equal(result.kind, 'completed');
   assert.equal(provider.request?.messages[0].content, 'Falamos das turmas ontem.');
   assert.equal(provider.request?.messages.at(-1)?.content, 'Qual era aquela turma de tecnologia?');
-  assert.deepEqual(provider.request?.tools.map((tool) => tool.name), ['get_course_knowledge', 'get_weather', 'list_classes', 'find_classes', 'get_notice_template', 'prepare_notice_schedule', 'get_schedule_status', 'compose_notice', 'draft_lesson_summary', 'draft_kahoot_quiz', 'list_agenda', 'find_contacts', 'create_note', 'create_reminder', 'list_long_term_memory', 'remember_user_fact', 'forget_user_memory']);
+  assert.deepEqual(provider.request?.tools.map((tool) => tool.name), ['get_course_knowledge', 'get_weather', 'list_classes', 'find_classes', 'get_notice_template', 'prepare_notice_schedule', 'get_schedule_status', 'compose_notice', 'draft_lesson_summary', 'draft_kahoot_quiz', 'list_agenda', 'find_contacts', 'create_note', 'create_expense', 'create_reminder', 'list_long_term_memory', 'remember_user_fact', 'forget_user_memory']);
 });
 
 test('aprovações agentic ficam inacessíveis ao cliente e expiram no servidor', () => {

@@ -12,8 +12,8 @@ import type { CalendarEvent, Reminder, Task } from '../lib/assistant/types';
 // America/Cuiaba é UTC-4 sem horário de verão — usado como fuso padrão do app.
 const NOW = new Date('2026-08-20T12:00:00.000Z'); // 08:00 em Cuiaba
 
-function reminder(id: string, dueAt: string, delivered = false): Reminder {
-  return { id, userId: 'u', createdAt: dueAt, updatedAt: dueAt, title: `r-${id}`, dueAt, contactId: null, notificationStatus: delivered ? 'delivered' : 'pending' };
+function reminder(id: string, dueAt: string, delivered = false, completedAt: string | null = null): Reminder {
+  return { id, userId: 'u', createdAt: dueAt, updatedAt: dueAt, title: `r-${id}`, dueAt, contactId: null, notificationStatus: delivered ? 'delivered' : 'pending', completedAt };
 }
 function task(id: string, dueAt: string | null, done = false): Task {
   return { id, userId: 'u', createdAt: '2026-08-01T00:00:00Z', updatedAt: '2026-08-01T00:00:00Z', title: `t-${id}`, status: done ? 'done' : 'open', dueAt, contactId: null };
@@ -88,9 +88,14 @@ test('agenda: agrupamento separa atrasado, hoje, amanhã e sem data', () => {
 });
 
 test('agenda: item concluído não conta como atrasado', () => {
-  const items = buildAgendaItems([reminder('done', '2026-08-19T13:00:00Z', true)], [], []);
+  const items = buildAgendaItems([reminder('done', '2026-08-19T13:00:00Z', false, '2026-08-19T13:01:00Z')], [], []);
   const groups = groupAgenda(items, NOW);
   assert.equal(groups.find((g) => g.key === 'late'), undefined);
+});
+
+test('agenda: push entregue não marca o lembrete como concluído', () => {
+  const [item] = buildAgendaItems([reminder('push', '2026-08-20T11:00:00Z', true)], [], []);
+  assert.equal(item.done, false);
 });
 
 test('hoje: curadoria prioriza atenção, hoje, aguardando e depois', () => {

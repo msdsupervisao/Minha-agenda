@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Protótipo — fluxo da Minha Agenda</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color: #172033; background: #eef2f7; }
+    body { max-width: 980px; margin: 0 auto; padding: 28px 18px 56px; }
+    h1 { margin-bottom: 6px; } p { line-height: 1.5; }
+    .question, .panel, .scenario { background: white; border: 1px solid #d9e0ea; border-radius: 14px; padding: 18px; margin: 16px 0; box-shadow: 0 5px 18px #1720330d; }
+    .question { border-left: 5px solid #356ae6; }
+    .state { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+    .field { background: #f5f7fb; padding: 12px; border-radius: 9px; }
+    .field b { display: block; font-size: .78rem; color: #637089; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+    button { border: 0; border-radius: 9px; padding: 10px 13px; margin: 4px 5px 4px 0; background: #356ae6; color: white; cursor: pointer; font-weight: 650; }
+    button.secondary { background: #647089; } button.danger { background: #b63838; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    .notice { min-height: 25px; color: #356ae6; font-weight: 650; }
+    .steps button { background: #0f8b68; } .steps button.done { background: #a6b2c5; }
+    code { background: #edf1f7; padding: 2px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Fluxo da Minha Agenda</h1>
+  <p>Protótipo descartável para sentir o comportamento da agenda antes de mexer no aplicativo real.</p>
+  <section class="question">
+    <strong>Pergunta que este protótipo responde</strong>
+    <p>Quando eu falo um pedido pelo celular, a agenda sabe diferenciar uma ação direta, um lembrete e um aviso que precisa de confirmação — sem repetir uma ação já concluída?</p>
+  </section>
+
+  <section class="panel">
+    <h2>Estado atual</h2>
+    <div id="state" class="state"></div>
+    <div id="notice" class="notice" aria-live="polite"></div>
+    <button class="secondary" data-action="reset">Recomeçar</button>
+  </section>
+
+  <section class="panel">
+    <h2>Brinque livremente</h2>
+    <p>Estas ações ficam sempre disponíveis de propósito. O estado mostra quando uma ação não faz sentido.</p>
+    <button data-action="expense">Registrar gasto de R$ 60</button>
+    <button data-action="reminder">Criar lembrete</button>
+    <button data-action="notice">Preparar aviso de aula</button>
+    <button data-action="approve">Confirmar aviso</button>
+    <button class="danger" data-action="approveAgain">Tentar confirmar de novo</button>
+    <button class="secondary" data-action="offline">Simular computador desligado</button>
+  </section>
+
+  <section class="scenario">
+    <h2>Passo a passo</h2>
+    <p>Escolha um cenário. Cada roteiro começa do zero e mostra a situação que vale observar.</p>
+    <div>
+      <button data-scenario="expense">Gasto rápido</button>
+      <button data-scenario="notice">Aviso com confirmação</button>
+      <button data-scenario="duplicate">Confirmação duplicada</button>
+      <button data-scenario="offline">Computador desligado</button>
+    </div>
+    <p id="scenarioDescription"></p>
+    <div id="steps" class="steps"></div>
+  </section>
+
+  <script>
+    // Módulo puro: esta máquina é a parte que pode ser levada para o código real.
+    const initial = () => ({ phase: 'pronto', records: [], pendingNotice: false, handoff: false, online: true, lastChange: 'Nada foi feito ainda.' });
+    function transition(state, action) {
+      const next = { ...state, records: [...state.records] };
+      if (action === 'reset') return initial();
+      if (action === 'offline') { next.online = false; next.lastChange = 'O computador ficou desligado. O pedido deve esperar, não ser perdido.'; return next; }
+      if (!next.online) { next.lastChange = 'Ação aguardando: o computador está desligado.'; return next; }
+      if (action === 'expense') { next.records.push('Gasto: R$ 60 — combustível'); next.phase = 'registrado'; next.lastChange = 'O gasto foi registrado uma vez.'; return next; }
+      if (action === 'reminder') { next.records.push('Lembrete: ligar para Ana'); next.phase = 'registrado'; next.lastChange = 'O lembrete foi criado.'; return next; }
+      if (action === 'notice') { next.pendingNotice = true; next.phase = 'aguardando confirmação'; next.lastChange = 'O aviso está pronto, mas ainda não foi agendado.'; return next; }
+      if (action === 'approve' && next.pendingNotice) { next.pendingNotice = false; next.handoff = true; next.phase = 'pronto para o celular'; next.records.push('Aviso: turma de quarta — mensagem pronta'); next.lastChange = 'Confirmado: o celular poderá abrir o WhatsApp com a mensagem.'; return next; }
+      if (action === 'approveAgain' && next.handoff) { next.lastChange = 'Bloqueado: essa confirmação já foi usada; não criou outro aviso.'; return next; }
+      next.lastChange = 'Essa ação não é válida neste momento.';
+      return next;
+    }
+
+    let state = initial();
+    let scenario = null;
+    let step = 0;
+    const scenarios = {
+      expense: { description: 'Um gasto falado no celular vira um registro direto.', actions: ['expense'] },
+      notice: { description: 'Um aviso só fica pronto para o celular depois da confirmação.', actions: ['notice', 'approve'] },
+      duplicate: { description: 'Uma segunda confirmação não cria um segundo aviso.', actions: ['notice', 'approve', 'approveAgain'] },
+      offline: { description: 'Com o computador desligado, o pedido espera e não finge que foi executado.', actions: ['offline', 'expense'] }
+    };
+    const labels = { pronto: 'Pronto', registrado: 'Registrado', 'aguardando confirmação': 'Aguardando confirmação', 'pronto para o celular': 'Pronto para o celular' };
+    function render() {
+      document.querySelector('#state').innerHTML = `
+        <div class="field"><b>Etapa</b>${labels[state.phase] || state.phase}</div>
+        <div class="field"><b>Computador</b>${state.online ? 'Ligado' : 'Desligado'}</div>
+        <div class="field"><b>Confirmação pendente</b>${state.pendingNotice ? 'Sim' : 'Não'}</div>
+        <div class="field"><b>Celular</b>${state.handoff ? 'Aviso pronto' : 'Sem aviso pronto'}</div>
+        <div class="field"><b>Registros</b>${state.records.length ? state.records.join('<br>') : 'Nenhum'}</div>`;
+      document.querySelector('#notice').textContent = state.lastChange;
+      const description = document.querySelector('#scenarioDescription');
+      description.textContent = scenario ? `${scenarios[scenario].description} Passo ${Math.min(step, scenarios[scenario].actions.length)} de ${scenarios[scenario].actions.length}.` : 'Nenhum roteiro selecionado.';
+      document.querySelector('#steps').innerHTML = scenario ? scenarios[scenario].actions.map((action, index) => `<button class="${index < step ? 'done' : ''}" data-step="${index}" ${index !== step ? 'disabled' : ''}>${index < step ? '✓ ' : ''}${action === 'approveAgain' ? 'Tentar confirmar novamente' : action === 'notice' ? 'Preparar aviso' : action === 'approve' ? 'Confirmar aviso' : action === 'offline' ? 'Desligar computador' : 'Registrar gasto'}</button>`).join('') : '';
+    }
+    function doAction(action) { state = transition(state, action); render(); }
+    document.addEventListener('click', event => {
+      const button = event.target.closest('button'); if (!button) return;
+      if (button.dataset.action) doAction(button.dataset.action);
+      if (button.dataset.scenario) { scenario = button.dataset.scenario; step = 0; state = initial(); render(); }
+      if (button.dataset.step) { doAction(scenarios[scenario].actions[step]); step++; render(); }
+    });
+    render();
+  </script>
+</body>
+</html>

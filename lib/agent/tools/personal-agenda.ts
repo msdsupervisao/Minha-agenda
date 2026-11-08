@@ -60,6 +60,22 @@ export function createPersonalAgendaTools(store: PersonalAgendaStore): AgentTool
       },
     },
     {
+      name: 'create_expense',
+      description: 'Registra um gasto atual em reais informado pelo usuário. Informe o valor positivo com até duas casas decimais e a categoria dita pelo usuário; se faltar o valor, pergunte antes de usar. Não use para gasto com data anterior ou futura: a data registrada é sempre o momento atual. A confirmação exige releitura do registro.',
+      risk: 'low',
+      inputSchema: z.object({ amount: z.number().positive().max(9999999999.99).refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 0.000001, 'Use no máximo duas casas decimais.'), category: z.string().trim().min(1).max(200) }).strict(),
+      async execute(input, context) {
+        const expense = { amount: Number(input.amount), category: String(input.category), occurredAt: context.now.toISOString(), source: context.source };
+        const id = await store.createExpense(context.userId, expense);
+        return { id, ...expense, currency: 'BRL' };
+      },
+      async verify(output, input, context) {
+        const id = outputId(output);
+        const saved = id ? await store.getExpense(context.userId, id) : null;
+        return { verified: Boolean(saved && saved.id === id && saved.amount === input.amount && saved.category === input.category && Date.parse(saved.occurredAt) === context.now.getTime() && saved.source === context.source), evidence: saved };
+      },
+    },
+    {
       name: 'create_reminder',
       description: 'Registra um lembrete pessoal comum na agenda. Nunca use quando o objetivo for preparar, enviar ou agendar aviso de aula/WhatsApp, mesmo que o usuário diga “me lembre”; esse pedido pertence ao fluxo de turmas. Para daqui a N minutos use delay_minutes com localDueAt=null; para data e hora use local_datetime e delayMinutes=null. A releitura comprova o registro, mas não comprova entrega de notificação nem agendamento no Android.',
       risk: 'low',

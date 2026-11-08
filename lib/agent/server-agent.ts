@@ -21,6 +21,7 @@ import { createEducationDraftGenerator } from '@/lib/education/draft-generator';
 import {
   createNoticeScheduleTools,
   createSupabaseScheduleHandoffStore,
+  type NoticeComposer,
   type ScheduleHandoffStore,
 } from './tools/notice-schedule';
 
@@ -50,6 +51,7 @@ export async function runAgentPilot(
     now?: Date;
     weatherLocation?: { latitude: number; longitude: number };
     educationDraft?: EducationDraft;
+    noticeComposer?: NoticeComposer;
     onProgress?: (event: AgentProgress) => void;
   } = {},
 ) {
@@ -65,7 +67,7 @@ export async function runAgentPilot(
   // Compose notices through whichever AI backend is active (OpenAI direct OR the free
   // OmniRoute gateway). Passing baseUrl makes the generator use chat completions on the
   // gateway instead of OpenAI's Responses API, so the notice works on the free setup too.
-  const compose = config.activeProvider !== 'local' && config.apiKey
+  const compose = options.noticeComposer || (config.activeProvider !== 'local' && config.apiKey
     ? async (args: {
         schoolClass: import('@/lib/assistant/types').SchoolClass;
         topic: string;
@@ -93,7 +95,7 @@ export async function runAgentPilot(
         });
         return { message: result.message };
       }
-    : undefined;
+    : undefined);
   const personalStore = options.personalStore || createSupabasePersonalAgendaStore(client);
   const educationDraft = options.educationDraft || (config.activeProvider !== 'local' && config.apiKey
     ? createEducationDraftGenerator(config)

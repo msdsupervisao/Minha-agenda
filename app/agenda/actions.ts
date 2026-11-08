@@ -38,7 +38,7 @@ export async function updateAgendaItem(
   const channels = input.channels === undefined ? ['push'] : normalizeChannels(input.channels);
   if (kind === 'reminder') {
     if (!input.at) return { ok: false, error: 'Informe a data e a hora do lembrete.' };
-    patch = { title, due_at: wallTimeToUtcIso(input.at, timezone), notified_at: null, notification_status: 'pending', metadata: { ...existingMetadata, alerts, channels } };
+    patch = { title, due_at: wallTimeToUtcIso(input.at, timezone), notified_at: null, notification_status: 'pending', completed_at: null, metadata: { ...existingMetadata, alerts, channels } };
   } else if (kind === 'task') {
     patch = { title, due_at: input.at ? wallTimeToUtcIso(input.at, timezone) : null, metadata: { ...existingMetadata, alerts, channels } };
   } else {
@@ -68,7 +68,7 @@ export async function setAgendaDone(kind: AgendaKind, id: string, done: boolean)
   const ctx = await getScreenContext();
   if (!ctx) return { ok: false, error: 'Sessão expirada.' };
   let patch: Record<string, unknown>;
-  if (kind === 'reminder') patch = { notification_status: done ? 'delivered' : 'pending' };
+  if (kind === 'reminder') patch = { completed_at: done ? new Date().toISOString() : null };
   else if (kind === 'task') patch = { status: done ? 'done' : 'open' };
   else return { ok: false, error: 'Compromissos não têm conclusão.' };
 

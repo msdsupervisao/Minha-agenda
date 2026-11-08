@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { dueNotifications, type NotifiableItem } from '../lib/notifications/schedule';
 import { pushFallbackNotification } from '../lib/notifications/dispatch';
-import { isStalePending } from '../lib/notifications/delivery';
+import { isStalePending, reminderReadyToFinalize } from '../lib/notifications/delivery';
 
 const event: NotifiableItem = {
   itemType: 'event', id: 'event-1', userId: 'user-1', title: 'Consulta',
@@ -48,4 +48,15 @@ test('delivery: falha WhatsApp gera uma chave de fallback push independente', ()
   assert.equal(push.channel, 'push');
   assert.match(push.dedupeKey, /:push$/);
   assert.notEqual(push.dedupeKey, whatsapp.dedupeKey);
+});
+
+test('lembrete não é marcado entregue quando a notificação falha ou ainda não venceu', () => {
+  const reminder: NotifiableItem = { ...event, itemType: 'reminder', id: 'r1', alerts: [0, 60] };
+  const now = new Date('2026-10-25T15:00:00.000Z');
+  const due = dueNotifications(reminder, 'America/Cuiaba', now);
+  assert.equal(reminderReadyToFinalize(reminder, due, new Set(), now), false);
+  assert.equal(reminderReadyToFinalize(reminder, due, new Set([due[0].dedupeKey]), now), false);
+  assert.equal(reminderReadyToFinalize(reminder, due, new Set(due.map((item) => item.dedupeKey)), now), true);
+  assert.equal(reminderReadyToFinalize(reminder, due, new Set(due.map((item) => item.dedupeKey)), new Date('2026-10-25T14:59:59.000Z')), false);
+  assert.equal(reminderReadyToFinalize({ ...reminder, channels: ['desktop'] }, [], new Set(), now), false);
 });

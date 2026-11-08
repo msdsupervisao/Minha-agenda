@@ -392,6 +392,9 @@ function providerDiagnostic(details: Record<string, string | number>): AgentProv
 }
 
 function providerFailureReply(diagnostic: AgentProviderDiagnostic) {
+  if (diagnostic.code === 'opencode_free_limit') return 'A IA gratuita atingiu o limite de uso. Tente novamente quando a cota estiver disponível.';
+  if (diagnostic.code === 'opencode_not_available') return 'Não encontrei o OpenCode no computador. Verifique se ele está instalado.';
+  if (diagnostic.code === 'opencode_unexpected_event') return 'O modelo tentou usar uma ferramenta que a ponte não permite. Não consegui concluir o pedido.';
   if (diagnostic.code === 'gateway_unavailable') return 'O serviço de IA está indisponível. Não consegui concluir a solicitação.';
   if (diagnostic.code === 'agent_provider_timeout') return 'O modelo demorou além do limite. Tente novamente em instantes.';
   if (diagnostic.status === 401 || diagnostic.status === 403) return 'O serviço de IA recusou a autenticação. Verifique a configuração do provedor.';
